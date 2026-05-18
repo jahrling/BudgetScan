@@ -1,13 +1,16 @@
-# TODO: Add auth dependency once session auth is implemented (phase 3).
-
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from finance.auth.dependencies import current_user
 from finance.db import get_session
 from finance.schemas.category import CategoryCreate, CategoryRead, CategoryUpdate
 from finance.services import category as category_service
 
-router = APIRouter(prefix="/api/categories", tags=["categories"])
+router = APIRouter(
+    prefix="/api/categories",
+    tags=["categories"],
+    dependencies=[Depends(current_user)],
+)
 
 
 @router.get("", response_model=list[CategoryRead])
