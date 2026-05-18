@@ -4,6 +4,7 @@ from collections.abc import AsyncIterator
 from fastapi import FastAPI
 
 from finance.db import init_db
+from finance.routers.auth import router as auth_router
 from finance.routers.categories import router as categories_router
 
 
@@ -14,6 +15,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="Finance", lifespan=lifespan)
+app.include_router(auth_router)
 app.include_router(categories_router)
 
 
