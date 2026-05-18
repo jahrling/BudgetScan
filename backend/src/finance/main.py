@@ -1,6 +1,20 @@
+from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator
+
 from fastapi import FastAPI
 
-app = FastAPI(title="Finance")
+from finance.db import init_db
+from finance.routers.categories import router as categories_router
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    await init_db()
+    yield
+
+
+app = FastAPI(title="Finance", lifespan=lifespan)
+app.include_router(categories_router)
 
 
 @app.get("/api/health")
