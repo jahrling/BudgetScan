@@ -3,6 +3,7 @@ from datetime import date, timedelta
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from finance.auth.dependencies import current_user
 from finance.db import get_session
 from finance.schemas.budget import (
     BudgetCreate,
@@ -12,7 +13,11 @@ from finance.schemas.budget import (
 )
 from finance.services import budget as budget_service
 
-router = APIRouter(prefix="/api/budgets", tags=["budgets"])
+router = APIRouter(
+    prefix="/api/budgets",
+    tags=["budgets"],
+    dependencies=[Depends(current_user)],
+)
 
 
 @router.get("", response_model=list[BudgetRead])

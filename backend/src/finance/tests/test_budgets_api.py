@@ -29,6 +29,7 @@ async def client():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         ac._session_factory = factory  # type: ignore[attr-defined]
+        await ac.post("/api/auth/setup", json={"username": "test", "password": "test"})
         yield ac
 
     app.dependency_overrides.clear()

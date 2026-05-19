@@ -1,24 +1,61 @@
-const BASE = "/api";
-
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    headers: { "Content-Type": "application/json", ...init?.headers },
-    ...init,
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.detail ?? `Request failed: ${res.status}`);
+export class ApiError extends Error {
+  status: number
+  constructor(status: number, message: string) {
+    super(message)
+    this.status = status
   }
-  if (res.status === 204) return undefined as T;
-  return res.json();
+}
+
+export async function apiFetch<T>(url: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(url, { credentials: 'include', ...init })
+  if (!res.ok) {
+    throw new ApiError(res.status, `HTTP ${res.status}`)
+  }
+  if (res.status === 204) return undefined as T
+  return res.json()
+}
+
+export interface UserRead {
+  id: number
+  username: string
+  created_at: string
+  updated_at: string
+}
+
+export const authApi = {
+  me: () => apiFetch<UserRead>('/api/auth/me'),
+  needsSetup: () => apiFetch<{ needs_setup: boolean }>('/api/auth/needs-setup'),
+  setup: (username: string, password: string) =>
+    apiFetch<UserRead>('/api/auth/setup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    }),
+  login: (username: string, password: string) =>
+    apiFetch<UserRead>('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    }),
+  logout: () =>
+    apiFetch<void>('/api/auth/logout', { method: 'POST' }),
 }
 
 export const api = {
-  get: <T>(path: string) => request<T>(path),
+  get: <T>(path: string) =>
+    apiFetch<T>(`/api${path}`),
   post: <T>(path: string, body: unknown) =>
-    request<T>(path, { method: "POST", body: JSON.stringify(body) }),
+    apiFetch<T>(`/api${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
   patch: <T>(path: string, body: unknown) =>
-    request<T>(path, { method: "PATCH", body: JSON.stringify(body) }),
+    apiFetch<T>(`/api${path}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
   delete: (path: string) =>
-    request<void>(path, { method: "DELETE" }),
+    apiFetch<void>(`/api${path}`, { method: "DELETE" }),
 };

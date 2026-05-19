@@ -1,62 +1,42 @@
 import pytest
-from httpx import ASGITransport, AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-
-from finance.db import get_session
-from finance.main import app
-from finance.models import Base
+from httpx import AsyncClient
 
 
 @pytest.fixture
-async def client():
-    engine = create_async_engine("sqlite+aiosqlite://", echo=False)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    factory = async_sessionmaker(engine, expire_on_commit=False)
-
-    async def override_session():
-        async with factory() as session:
-            yield session
-
-    app.dependency_overrides[get_session] = override_session
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        yield ac
-
-    app.dependency_overrides.clear()
-    await engine.dispose()
+async def authed_client(client: AsyncClient):
+    await client.post("/api/auth/setup", json={"username": "admin", "password": "pass"})
+    return client
 
 
-async def test_create_and_list(client: AsyncClient) -> None:
-    resp = await client.post("/api/categories", json={"name": "Food"})
+async def test_create_and_list(authed_client: AsyncClient) -> None:
+    resp = await authed_client.post("/api/categories", json={"name": "Food"})
     assert resp.status_code == 201
     food = resp.json()
     assert food["name"] == "Food"
     assert food["parent_id"] is None
 
-    resp = await client.get("/api/categories")
+    resp = await authed_client.get("/api/categories")
     assert resp.status_code == 200
     assert len(resp.json()) == 1
 
 
-async def test_get_by_id(client: AsyncClient) -> None:
-    resp = await client.post("/api/categories", json={"name": "Transport"})
+async def test_get_by_id(authed_client: AsyncClient) -> None:
+    resp = await authed_client.post("/api/categories", json={"name": "Transport"})
     cat_id = resp.json()["id"]
-    resp = await client.get(f"/api/categories/{cat_id}")
+    resp = await authed_client.get(f"/api/categories/{cat_id}")
     assert resp.status_code == 200
     assert resp.json()["name"] == "Transport"
 
 
-async def test_get_not_found(client: AsyncClient) -> None:
-    resp = await client.get("/api/categories/9999")
+async def test_get_not_found(authed_client: AsyncClient) -> None:
+    resp = await authed_client.get("/api/categories/9999")
     assert resp.status_code == 404
 
 
-async def test_create_with_parent(client: AsyncClient) -> None:
-    parent = (await client.post("/api/categories", json={"name": "Food"})).json()
+async def test_create_with_parent(authed_client: AsyncClient) -> None:
+    parent = (await authed_client.post("/api/categories", json={"name": "Food"})).json()
     child = (
-        await client.post(
+        await authed_client.post(
             "/api/categories",
             json={"name": "Groceries", "parent_id": parent["id"]},
         )
@@ -64,39 +44,39 @@ async def test_create_with_parent(client: AsyncClient) -> None:
     assert child["parent_id"] == parent["id"]
 
 
-async def test_update(client: AsyncClient) -> None:
-    cat = (await client.post("/api/categories", json={"name": "Old"})).json()
-    resp = await client.patch(
+async def test_update(authed_client: AsyncClient) -> None:
+    cat = (await authed_client.post("/api/categories", json={"name": "Old"})).json()
+    resp = await authed_client.patch(
         f"/api/categories/{cat['id']}", json={"name": "New"}
     )
     assert resp.status_code == 200
     assert resp.json()["name"] == "New"
 
 
-async def test_delete(client: AsyncClient) -> None:
-    cat = (await client.post("/api/categories", json={"name": "Temp"})).json()
-    resp = await client.delete(f"/api/categories/{cat['id']}")
+async def test_delete(authed_client: AsyncClient) -> None:
+    cat = (await authed_client.post("/api/categories", json={"name": "Temp"})).json()
+    resp = await authed_client.delete(f"/api/categories/{cat['id']}")
     assert resp.status_code == 204
-    resp = await client.get(f"/api/categories/{cat['id']}")
+    resp = await authed_client.get(f"/api/categories/{cat['id']}")
     assert resp.status_code == 404
 
 
-async def test_self_parent_rejected(client: AsyncClient) -> None:
-    cat = (await client.post("/api/categories", json={"name": "X"})).json()
-    resp = await client.patch(
+async def test_self_parent_rejected(authed_client: AsyncClient) -> None:
+    cat = (await authed_client.post("/api/categories", json={"name": "X"})).json()
+    resp = await authed_client.patch(
         f"/api/categories/{cat['id']}", json={"parent_id": cat["id"]}
     )
     assert resp.status_code == 400
 
 
-async def test_cycle_rejected(client: AsyncClient) -> None:
-    a = (await client.post("/api/categories", json={"name": "A"})).json()
+async def test_cycle_rejected(authed_client: AsyncClient) -> None:
+    a = (await authed_client.post("/api/categories", json={"name": "A"})).json()
     b = (
-        await client.post(
+        await authed_client.post(
             "/api/categories", json={"name": "B", "parent_id": a["id"]}
         )
     ).json()
-    resp = await client.patch(
+    resp = await authed_client.patch(
         f"/api/categories/{a['id']}", json={"parent_id": b["id"]}
     )
     assert resp.status_code == 400
