@@ -6,6 +6,8 @@ import './index.css'
 import { useAuth } from './hooks/useAuth'
 import NavBar from './components/NavBar'
 import Home from './routes/Home'
+import Categories from './routes/Categories'
+import Budgets from './routes/Budgets'
 import Login from './routes/Login'
 
 const queryClient = new QueryClient()
@@ -60,6 +62,22 @@ function App() {
           element={
             <AuthGuard>
               <Home />
+            </AuthGuard>
+          }
+        />
+        <Route
+          path="/categories"
+          element={
+            <AuthGuard>
+              <Categories />
+            </AuthGuard>
+          }
+        />
+        <Route
+          path="/budgets"
+          element={
+            <AuthGuard>
+              <Budgets />
             </AuthGuard>
           }
         />

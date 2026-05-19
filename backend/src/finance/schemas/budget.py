@@ -30,3 +30,12 @@ class BudgetUpdate(BaseModel):
     amount_cents: int | None = None
     start_date: date | None = None
     end_date: date | None = None
+
+
+class BudgetStatusItem(BaseModel):
+    category_id: int
+    category_name: str
+    budgeted_cents: int
+    spent_cents: int
+    remaining_cents: int
+    percent_used: float

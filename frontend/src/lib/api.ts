@@ -40,3 +40,22 @@ export const authApi = {
   logout: () =>
     apiFetch<void>('/api/auth/logout', { method: 'POST' }),
 }
+
+export const api = {
+  get: <T>(path: string) =>
+    apiFetch<T>(`/api${path}`),
+  post: <T>(path: string, body: unknown) =>
+    apiFetch<T>(`/api${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  patch: <T>(path: string, body: unknown) =>
+    apiFetch<T>(`/api${path}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  delete: (path: string) =>
+    apiFetch<void>(`/api${path}`, { method: "DELETE" }),
+};
