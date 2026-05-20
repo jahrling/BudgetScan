@@ -15,17 +15,27 @@ export interface Budget {
   amount_cents: number;
   start_date: string;
   end_date: string | null;
+  is_pinned: boolean;
   created_at: string;
   updated_at: string;
 }
 
 export interface BudgetStatusItem {
+  budget_id: number;
   category_id: number;
   category_name: string;
+  category_icon: string | null;
+  category_color: string | null;
   budgeted_cents: number;
   spent_cents: number;
   remaining_cents: number;
   percent_used: number;
+  percent_remaining: number;
+  is_pinned: boolean;
+  period: string;
+  period_start: string;
+  period_end: string;
+  days_remaining: number;
 }
 
 export interface Account {

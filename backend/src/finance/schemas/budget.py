@@ -9,6 +9,7 @@ class BudgetCreate(BaseModel):
     amount_cents: int
     start_date: date
     end_date: date | None = None
+    is_pinned: bool = False
 
 
 class BudgetRead(BaseModel):
@@ -18,6 +19,7 @@ class BudgetRead(BaseModel):
     amount_cents: int
     start_date: date
     end_date: date | None
+    is_pinned: bool
     created_at: datetime
     updated_at: datetime
 
@@ -30,12 +32,22 @@ class BudgetUpdate(BaseModel):
     amount_cents: int | None = None
     start_date: date | None = None
     end_date: date | None = None
+    is_pinned: bool | None = None
 
 
 class BudgetStatusItem(BaseModel):
+    budget_id: int
     category_id: int
     category_name: str
+    category_icon: str | None = None
+    category_color: str | None = None
     budgeted_cents: int
     spent_cents: int
     remaining_cents: int
     percent_used: float
+    percent_remaining: float
+    is_pinned: bool
+    period: str
+    period_start: date
+    period_end: date
+    days_remaining: int

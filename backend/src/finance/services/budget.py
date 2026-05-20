@@ -100,19 +100,34 @@ async def get_budget_status(
         row.category_id: row.spent for row in spending_result
     }
 
+    today = date.today()
+    days_remaining = max(0, (period_end - today).days + 1)
+
     results = []
     for b in active_budgets:
         spent = spent_map.get(b.category_id, 0)
         remaining = b.amount_cents - spent
         percent = (spent / b.amount_cents * 100) if b.amount_cents > 0 else 0.0
+        percent_remaining = (
+            (remaining / b.amount_cents * 100) if b.amount_cents > 0 else 0.0
+        )
         results.append(
             {
+                "budget_id": b.id,
                 "category_id": b.category_id,
                 "category_name": b.category.name if b.category else "",
+                "category_icon": b.category.icon if b.category else None,
+                "category_color": b.category.color if b.category else None,
                 "budgeted_cents": b.amount_cents,
                 "spent_cents": spent,
                 "remaining_cents": remaining,
                 "percent_used": round(percent, 1),
+                "percent_remaining": round(percent_remaining, 1),
+                "is_pinned": bool(b.is_pinned),
+                "period": b.period,
+                "period_start": period_start,
+                "period_end": period_end,
+                "days_remaining": days_remaining,
             }
         )
 
