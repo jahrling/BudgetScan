@@ -33,6 +33,7 @@ export function useCreateTransaction() {
       posted_at: string;
       amount_cents: number;
       description?: string | null;
+      receipt_id?: number | null;
       line_items?: LineItemInput[];
     }) => api.post<TransactionDetail>("/transactions", data),
     onSuccess: () => {

@@ -56,3 +56,35 @@ Decisions, gotchas, and non-obvious implementation details accumulated during th
 - **No test for pagination.** The offset/limit logic in `list_transactions` is exercised only with 2 records. Edge cases (offset beyond total, limit=0) are untested.
 - **No auth enforcement test for new endpoints.** The auth tests only verify categories require auth. Accounts, merchants, and transactions endpoints are assumed protected by the router-level `dependencies=[Depends(current_user)]` but this isn't explicitly tested.
 - **Budget status integration with real transactions is only tested in `test_budgets_api.py`** using direct model insertion, not through the transaction API. No test verifies that creating a transaction via POST actually shows up in budget status.
+
+## Phase 6 — Receipt OCR
+
+### Key decisions
+
+- **Ollama is called via `/api/generate` with `format=json`**, not the OpenAI-compatible `/v1/chat/completions` endpoint. `format=json` makes the model emit strict JSON without code fences in practice, but `extract_json` still strips fences and falls back to greedy `{...}` extraction in case the model ignores the format hint. One retry on parse failure.
+- **Vision model is `qwen2.5vl:7b`; text categorizer is `qwen2.5:7b`.** Both configurable via env (`OLLAMA_VISION_MODEL`, `OLLAMA_TEXT_MODEL`). Set in `config.py`.
+- **Pillow preprocessing always re-encodes as JPEG q=90 with long edge ≤ 2048px.** EXIF rotation is applied first (`ImageOps.exif_transpose`) so iPhone portraits don't go to the model sideways. Non-RGB inputs (HEIC, PNG with alpha) are converted to RGB.
+- **Storage layout is `data/receipts/<yyyy>/<mm>/<sha256><ext>`**, dedupe is by SHA-256. Re-uploading the same image returns the existing row unchanged — `created=False`, no re-OCR triggered. Original file extension is kept when it's a recognized image type, otherwise content-type sniff → `.jpg` fallback.
+- **Background OCR uses FastAPI `BackgroundTasks`** and opens its own session via the module-level `async_session_factory`. No Celery, no Redis. Tests monkeypatch `routers.receipts.async_session_factory` to the in-memory test factory so background work hits the right DB.
+- **Categorizer is best-effort and cached in-process.** Cache key is `(normalized_description, category_set_hash)`. The category-set hash invalidates the cache automatically when categories are added/renamed. On any LLM error the categorizer falls back to merchant `default_category_id`, then to `Uncategorized` — it never raises.
+- **`/to-transaction` reconciles drift with a single balancer line.** If parsed items sum within ±$1 of `total`, the difference becomes a "Tax / rounding" line under Uncategorized. If they're off by more than $1 (and the drift isn't explained by the reported tax), the items are discarded and a single Uncategorized line for the full total is created instead — guarantees `sum(line_items) == amount_cents` so the existing Phase 5 invariants hold.
+- **Status mapping:** uploaded receipt = `pending`; OCR success = `done`; OCR failure = `failed` with `ocr_error` truncated to 500 chars. The router endpoint `POST /process?force=true` resets to `pending` and re-queues.
+
+### Non-obvious implementation details
+
+- **`SnapReceiptButton` uses XHR, not `fetch`.** Browser `fetch` does not surface upload-progress events; XHR does. Returns a typed `Receipt` on success.
+- **The Snap button reuses one `<input type=file capture=environment>` per render.** Hidden, programmatically clicked. Always resets `e.target.value = ""` after a pick so the same file can be re-selected.
+- **`ReceiptProcessing` polls via TanStack Query's `refetchInterval`** — it doesn't run its own timer. The query returns `false` for the interval once status is non-pending, which stops polling automatically.
+- **Auto-to-transaction is account-gated.** If the user has exactly one account, it's selected silently; otherwise the processing screen blocks on an account picker once OCR is done.
+- **Manual fallback wires through `?manual=<receipt_id>` on the Transactions route.** This opens the Add Transaction dialog pre-attached to the receipt; the dialog shows a thumbnail of the image so the user can transcribe by eye.
+- **The split-editor navigation uses `?open=<txn_id>`.** Transactions.tsx reads it on mount, sets `selectedId`, and strips the param via `setSearchParams(..., {replace: true})` so back-button behaves.
+- **`apiFetch` does not parse error JSON.** The receipt upload path uses XHR directly so it can surface the FastAPI `detail` field (e.g. "Receipt image exceeds 10 MB limit") on 4xx — a small divergence from the rest of the codebase where errors are just `HTTP <status>`.
+
+### What tests don't cover
+
+- **No real Ollama integration test.** OCR is mocked at `services.ocr.ocr_receipt_file`. The actual JSON shape that `qwen2.5vl:7b` returns hasn't been validated by code — the prompt is best-guess and only loosely constrained by `format=json`.
+- **No frontend tests for the receipt flow.** SnapReceiptButton, ReceiptProcessing, and the manual-fallback wiring are untested. The only frontend test remains `Home.test.tsx`.
+- **No test for >10MB upload at the HTTP layer with a real ASGI client.** The 413 test patches `max_receipt_upload_bytes` down to 100 to keep test images small.
+- **No test for the categorizer cache.** The `_CACHE` dict is process-scoped; `clear_cache()` exists for tests but no test verifies that two consecutive identical descriptions hit the cache instead of the LLM.
+- **No test for `force=true` actually re-running OCR.** The test triggers initial processing via `?force=true` for determinism; the "skip if already done" path is exercised only implicitly.
+- **No test for storage path layout.** The yyyy/mm/sha256 layout is asserted only via the side effect that the file is readable; the path structure itself is not validated.

@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   ChevronLeft,
   Plus,
@@ -6,6 +7,8 @@ import {
   Trash2,
 } from "lucide-react";
 import { Layout } from "../components/Layout";
+import { SnapReceiptButton } from "../components/SnapReceiptButton";
+import { receiptImageUrl } from "../hooks/useReceipts";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -38,6 +41,7 @@ interface AddForm {
   merchant: Merchant | null;
   amount_cents: number;
   description: string;
+  receipt_id: number | null;
 }
 
 const emptyAdd: AddForm = {
@@ -46,6 +50,7 @@ const emptyAdd: AddForm = {
   merchant: null,
   amount_cents: 0,
   description: "",
+  receipt_id: null,
 };
 
 export default function Transactions() {
@@ -72,6 +77,28 @@ export default function Transactions() {
   const [addForm, setAddForm] = useState<AddForm>(emptyAdd);
 
   const [selectedId, setSelectedId] = useState<number | null>(null);
+
+  // Honor ?open=<id> and ?manual=<receipt_id> from receipt flow.
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    const open = searchParams.get("open");
+    const manual = searchParams.get("manual");
+    if (open) {
+      setSelectedId(Number(open));
+      searchParams.delete("open");
+      setSearchParams(searchParams, { replace: true });
+    } else if (manual) {
+      setAddForm({
+        ...emptyAdd,
+        account_id: accounts.length === 1 ? accounts[0].id : null,
+        receipt_id: Number(manual),
+      });
+      setAddOpen(true);
+      searchParams.delete("manual");
+      setSearchParams(searchParams, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, accounts.length]);
 
   function applyFilters() {
     const f: Record<string, string> = {};
@@ -103,6 +130,7 @@ export default function Transactions() {
       posted_at: new Date(addForm.date).toISOString(),
       amount_cents: addForm.amount_cents,
       description: addForm.description || null,
+      receipt_id: addForm.receipt_id,
     });
     setAddOpen(false);
     setAddForm(emptyAdd);
@@ -139,6 +167,7 @@ export default function Transactions() {
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-xl font-bold">Transactions</h1>
         <div className="flex gap-2">
+          <SnapReceiptButton label="" variant="outline" />
           <Button
             variant="outline"
             size="sm"
@@ -312,8 +341,20 @@ export default function Transactions() {
 
       {/* Add transaction dialog */}
       <Dialog open={addOpen} onClose={() => setAddOpen(false)}>
-        <DialogTitle>Add Transaction</DialogTitle>
+        <DialogTitle>
+          {addForm.receipt_id ? "Add Transaction (manual fallback)" : "Add Transaction"}
+        </DialogTitle>
         <form onSubmit={handleAdd} className="space-y-4">
+          {addForm.receipt_id && (
+            <div className="rounded-lg border border-gray-200 p-2 bg-gray-50">
+              <p className="text-xs text-gray-500 mb-1">Attached receipt</p>
+              <img
+                src={receiptImageUrl(addForm.receipt_id)}
+                alt="Receipt"
+                className="max-h-40 mx-auto rounded"
+              />
+            </div>
+          )}
           <div>
             <Label>Date</Label>
             <input
@@ -528,6 +569,13 @@ function TransactionDetailView({
         </div>
         {txn.description && txn.merchant_name && (
           <p className="text-sm text-gray-600 mt-1">{txn.description}</p>
+        )}
+        {txn.receipt_id && (
+          <img
+            src={receiptImageUrl(txn.receipt_id)}
+            alt="Receipt"
+            className="mt-3 max-h-40 mx-auto rounded border border-gray-200"
+          />
         )}
       </div>
 

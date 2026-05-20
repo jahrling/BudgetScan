@@ -93,3 +93,17 @@ export interface LineItemInput {
   description?: string | null;
   amount_cents: number;
 }
+
+export interface Receipt {
+  id: number;
+  file_path: string;
+  original_filename: string;
+  sha256: string;
+  captured_at: string;
+  ocr_raw_json: string | null;
+  ocr_model: string | null;
+  ocr_status: "pending" | "done" | "failed";
+  ocr_error: string | null;
+  created_at: string;
+  updated_at: string;
+}

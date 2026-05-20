@@ -54,7 +54,21 @@ Every assumption currently baked into the codebase that has not been validated a
 - **QIF format will be sufficient.** The architecture assumes QIF as the interchange format with Quicken. QIF is ancient and lossy — it doesn't support split categories well in all Quicken versions. This hasn't been validated against a modern Quicken import.
 - **Bank transaction matching is solvable.** Phase 8 assumes imported bank transactions can be matched to manually-entered receipt transactions. The matching strategy (by date + amount? by Quicken ID?) hasn't been designed.
 
-## OCR (future phases)
+## OCR (Phase 6 — now active, still mostly untested)
 
 - **16GB VRAM is enough for Qwen2.5-VL-7B.** The architecture doc states this but it hasn't been tested on the target hardware. Quantization level (Q4 assumed) and actual memory footprint with real receipt images are unvalidated.
-- **Receipt photos will be well-lit and readable.** The OCR pipeline assumes phone camera photos of receipts. Crumpled, faded, or thermal-printed receipts (which fade fast) haven't been considered.
+- **Receipt photos will be well-lit and readable.** The OCR pipeline assumes phone camera photos of receipts. Crumpled, faded, or thermal-printed receipts haven't been considered.
+- **`qwen2.5vl:7b` returns the JSON shape our prompt asks for.** Prompt requests `{merchant, date, total, subtotal, tax, items[]}`. No real receipt has been run through the model in CI — tests mock the OCR layer entirely. The `_to_cents` helper tolerates string→float coercion ("$12.34"), but unknown/renamed keys silently drop.
+- **Ollama's `format=json` flag actually returns valid JSON.** Version-dependent. `extract_json` falls back to fence stripping + greedy `{...}` matching, with one retry. A model that returns prose-wrapped JSON twice in a row produces `OCRError` → receipt status `failed`.
+- **Vision/text timeout = 120s.** Covers cold model loads (~30s+ for weights) plus inference. Marginal on slow GPUs.
+- **Receipt items sum to approximately `total`.** The reconciler accepts ±$1 drift via a balancer "Tax / rounding" line. Larger unexplained drift collapses to a single Uncategorized line for the whole total. Multi-tax receipts, post-total tips, or item-level discounts not folded into `amount` will hit the fallback path and lose item-level detail.
+- **The user's category tree is informative enough for the categorizer.** The text categorizer sends every category in the DB. If categories are sparse or generic, suggestions degrade — but the fallback chain (merchant default → Uncategorized) keeps the flow usable.
+- **In-process categorizer cache is fine.** Survives only until the Uvicorn process restarts. Multi-worker deployments would each maintain their own cache. Not relevant at single-user scale.
+
+## Mobile capture (Phase 6)
+
+- **`<input type=file accept=image/* capture=environment>` opens the back camera on iPhone Safari.** True for iOS 14.5+ but unverified on the target device. Desktop falls back to a file picker.
+- **XHR upload-progress events fire in all target browsers.** Drives the upload % UI. Safari/iOS support has been stable for years but isn't tested here.
+- **10 MB upload cap is enough.** Modern iPhone photos are 2–4 MB JPEG/HEIC. Burst frames or PNG screenshots could push past it; the server returns 413 with a clear message.
+- **Background-task OCR finishes within the 60s frontend polling window.** Warm Qwen2.5-VL-7B on a strong GPU clears this. Cold loads on weaker GPUs may not. After 60s the UI offers "Keep waiting" or "Enter manually."
+- **Polling at 2s is gentle enough at single-user scale.** No exponential backoff, no rate-limit, no debounce. With one user this is ~30 hits per OCR; trivial. Would need rethinking at multi-user scale.
