@@ -22,6 +22,7 @@ class ReceiptRead(BaseModel):
     ocr_model: str | None
     ocr_status: str
     ocr_error: str | None
+    dropbox_path: str | None = None
     created_at: datetime
     updated_at: datetime
 

@@ -3,7 +3,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from finance.auth.dependencies import current_user
 from finance.auth.sessions import COOKIE_NAME, MAX_AGE, create_session_token
+from finance.config import settings
 from finance.db import get_session
+from finance.security import CSRF_COOKIE, issue_csrf_cookie
 from finance.models.user import User
 from finance.schemas.user import UserCreate, UserRead
 from finance.services import auth as auth_service
@@ -30,6 +32,7 @@ async def setup(
         )
     user = await auth_service.create_user(session, data.username, data.password)
     _set_session_cookie(response, user.id)
+    issue_csrf_cookie(response)
     return user
 
 
@@ -46,12 +49,15 @@ async def login(
             detail="Invalid credentials",
         )
     _set_session_cookie(response, user.id)
+    issue_csrf_cookie(response)
     return user
 
 
 @router.post("/logout", status_code=204)
 async def logout(response: Response):
-    response.delete_cookie(COOKIE_NAME, path="/", httponly=True, samesite="lax")
+    samesite = "strict" if settings.app_env == "production" else "lax"
+    response.delete_cookie(COOKIE_NAME, path="/", httponly=True, samesite=samesite)
+    response.delete_cookie(CSRF_COOKIE, path="/", samesite=samesite)
 
 
 @router.get("/me", response_model=UserRead)
@@ -61,12 +67,13 @@ async def me(user: User = Depends(current_user)):
 
 def _set_session_cookie(response: Response, user_id: int) -> None:
     token = create_session_token(user_id)
+    is_prod = settings.app_env == "production"
     response.set_cookie(
         key=COOKIE_NAME,
         value=token,
         max_age=MAX_AGE,
         path="/",
         httponly=True,
-        samesite="lax",
-        secure=False,  # switched to True behind TLS reverse proxy
+        samesite="strict" if is_prod else "lax",
+        secure=is_prod,
     )

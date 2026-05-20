@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import logging
 import mimetypes
@@ -19,7 +20,7 @@ from finance.models.line_item import LineItem
 from finance.models.merchant import Merchant
 from finance.models.receipt import Receipt
 from finance.models.transaction import Transaction
-from finance.services import ocr as ocr_service
+from finance.services import dropbox_sync, ocr as ocr_service
 from finance.services.categorizer import suggest_categories
 from finance.services.merchant import maybe_update_default_category
 from finance.services.transaction import (
@@ -65,6 +66,19 @@ async def store_upload(
         raise HTTPException(status_code=413, detail="Receipt image exceeds 10 MB limit")
     if not raw:
         raise HTTPException(status_code=400, detail="Empty upload")
+
+    # Validate the upload is actually a decodable image. verify() consumes
+    # the stream, so we re-open afterwards if we ever needed the object —
+    # here we only need the format check.
+    try:
+        from PIL import Image, UnidentifiedImageError
+
+        with Image.open(io.BytesIO(raw)) as probe:
+            probe.verify()
+    except (UnidentifiedImageError, OSError, ValueError) as exc:
+        raise HTTPException(
+            status_code=400, detail=f"Upload is not a valid image: {exc}"
+        ) from exc
 
     digest = hashlib.sha256(raw).hexdigest()
 
@@ -119,7 +133,64 @@ async def run_ocr(session: AsyncSession, receipt_id: int) -> Receipt:
         receipt.ocr_error = str(exc)[:500]
     await session.commit()
     await session.refresh(receipt)
+
+    # If OCR succeeded, upload to Dropbox and delete the local image.
+    # Any failure here leaves the local file in place for the retry cron;
+    # OCR success is not rolled back.
+    if receipt.ocr_status == "done" and not receipt.dropbox_path:
+        await _archive_to_dropbox(session, receipt)
     return receipt
+
+
+async def _archive_to_dropbox(session: AsyncSession, receipt: Receipt) -> None:
+    path = Path(receipt.file_path)
+    if not path.exists():
+        return
+    try:
+        result = dropbox_sync.upload_receipt(
+            path, receipt.sha256, captured_at=receipt.captured_at
+        )
+        dropbox_sync.delete_after_confirmed(
+            path, result.dropbox_path, result.content_hash
+        )
+        receipt.dropbox_path = result.dropbox_path
+        await session.commit()
+        await session.refresh(receipt)
+    except dropbox_sync.DropboxNotConfigured:
+        logger.warning(
+            "Dropbox not configured; receipt %s kept locally", receipt.id
+        )
+    except (
+        dropbox_sync.DropboxUploadError,
+        dropbox_sync.DropboxVerificationError,
+    ) as exc:
+        logger.error("Dropbox archive failed for receipt %s: %s", receipt.id, exc)
+
+
+async def retry_pending_uploads(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> dict[str, int]:
+    """Sweep done-OCR receipts that haven't been archived. Used by the cron."""
+    attempted = 0
+    succeeded = 0
+    failed = 0
+    async with session_factory() as session:
+        rows = await session.execute(
+            select(Receipt).where(
+                Receipt.ocr_status == "done",
+                Receipt.dropbox_path.is_(None),
+            )
+        )
+        for receipt in rows.scalars().all():
+            if not Path(receipt.file_path).exists():
+                continue
+            attempted += 1
+            await _archive_to_dropbox(session, receipt)
+            if receipt.dropbox_path:
+                succeeded += 1
+            else:
+                failed += 1
+    return {"attempted": attempted, "succeeded": succeeded, "failed": failed}
 
 
 async def process_in_background(

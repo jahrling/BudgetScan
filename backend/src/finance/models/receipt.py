@@ -18,3 +18,4 @@ class Receipt(Base):
     ocr_model: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     ocr_status: Mapped[str] = mapped_column(String(16), default="pending")
     ocr_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    dropbox_path: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

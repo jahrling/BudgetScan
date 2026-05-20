@@ -1,2 +1,47 @@
-# Placeholder — will be configured in Phase 9 (Polish & Deploy)
-# with local HTTPS via Caddy's internal CA.
+# Caddy reverse proxy for the BudgetScan home server.
+#
+# Serves the React PWA build and proxies /api/* + /docs to FastAPI.
+# Uses Caddy's internal CA (local TLS, LAN-only). To trust the CA on
+# iPhone, browse to http://<server-ip>:2019/pki/ca/local/certificate
+# and install the .crt via Settings → General → VPN & Device Management.
+#
+# This is the LAN-only deployment. When zero-trust ingress is added,
+# replace this file with the edge proxy's config; the app expects
+# identity headers to be forwarded by the edge.
+
+{
+	# Bind the admin API on all interfaces so the CA cert can be fetched
+	# from a phone on the LAN.
+	admin 0.0.0.0:2019
+	# Cap log size so the container's stdout stream stays useful.
+	log {
+		output stdout
+		format json
+		level INFO
+	}
+}
+
+# Replace `:443` with `finance.local` (or your hostname) once it resolves.
+:443 {
+	tls internal
+
+	encode gzip zstd
+
+	# API + auto-generated docs go to FastAPI.
+	@api path /api/* /docs /redoc /openapi.json
+	handle @api {
+		reverse_proxy backend:8000 {
+			header_up X-Forwarded-Proto {scheme}
+		}
+	}
+
+	# Everything else is the static SPA build served by the frontend container.
+	handle {
+		reverse_proxy frontend:80
+	}
+}
+
+# Redirect HTTP → HTTPS so iOS won't downgrade camera capture.
+:80 {
+	redir https://{host}{uri} permanent
+}

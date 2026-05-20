@@ -117,3 +117,39 @@ Decisions, gotchas, and non-obvious implementation details accumulated during th
 - **No frontend tests for the dashboard's data wiring.** `Home.test.tsx` only checks the heading and FAB render; the budget-card sorting, the merchant aggregation, and the week-window logic have no assertions.
 - **No backend test for the new `is_pinned` field.** The migration and the schema fields are typed but unverified — needs a test that creates a budget with `is_pinned=true`, reads it back via `GET /api/budgets/status`, and asserts pinned-first ordering once the UI relies on it.
 - **The performance target (FCP < 1.5s on cold-cache iPhone over LAN) is unmeasured.** Code-splitting and the precache should make it achievable, but the actual number depends on bundle sizes and server speed.
+
+## Phase 9 — Hardening & deploy
+
+### Storage philosophy
+
+- **Receipt images never accumulate locally.** Local `data/receipts/` is a staging buffer. The flow is: upload → OCR writes JSON to SQLite → upload image to Dropbox → verify content_hash → delete local file. The JSON in SQLite is the permanent operational record; the Dropbox image is the audit trail. If Dropbox is offline, the local file is *kept* and the hourly cron retries — never silently discarded.
+- **Dropbox content_hash is computed in 4 MiB blocks.** Not a plain sha256 — see `dropbox_content_hash()`. Verification compares the API's `content_hash` from `files_get_metadata`. The receipt's row stores `dropbox_path` after a successful verify; `NULL` means "pending or failed."
+- **Purge is dry-run by default.** `purge_old_receipts(months=36, confirm=False)` only lists what *would* go. Real deletes require an explicit operator call with `confirm=True` — there is no automated purge.
+
+### Config & env
+
+- **`APP_ENV=production` is the master switch.** Required secrets (`SECRET_KEY`, `DROPBOX_ACCESS_TOKEN`) fail-fast at startup only when `APP_ENV=production`. Tests + dev runs keep working with empty defaults. The same flag turns on `Secure + SameSite=Strict` cookies and CSRF enforcement.
+- **Env-var aliases for renamed keys.** `OLLAMA_BASE_URL` and `RECEIPT_STAGING_DIR` are the documented names in `.env.example`; the old `OLLAMA_URL` / `RECEIPTS_DIR` still work. `model_post_init` copies the alias into the legacy field so existing call sites (`settings.ollama_url`, `settings.receipts_dir`) are unchanged.
+
+### Security
+
+- **CSRF is double-submit cookie + `X-CSRF-Token` header.** Middleware enforces on every state-changing `/api/*` request **only when `APP_ENV=production`** so the test suite (which doesn't echo the token) keeps passing. Exempt routes: `/api/auth/setup`, `/api/auth/login`, `/api/auth/needs-setup` (no session cookie yet on first request). The `csrf_token` cookie is non-HttpOnly by design so the SPA can read it.
+- **Login rate limit is per-process, in-memory.** A `deque` of timestamps per IP, 5/min. Reset on container restart. Good enough for a single-user LAN app; would need Redis if ever multi-process.
+- **Image validation is Pillow `verify()` on the raw bytes** *before* writing to staging. Catches corrupt uploads and non-images with a clean 400. `verify()` is destructive on the stream — we don't reuse the object after, so no re-open needed.
+
+### Reverse proxy
+
+- **Caddy's admin API is bound to `0.0.0.0:2019`** so phones on the LAN can fetch the root CA cert at `http://<server-ip>:2019/pki/ca/local/certificate`. Default binding is `127.0.0.1:2019` which would 404 from any other host. This is fine for LAN-only deployment but **must** be removed if Caddy is ever exposed outside the LAN.
+- **`tls internal` is the LAN-only mode.** When zero-trust ingress is added later, swap Caddy out; the app needs no changes because the session cookie still works the same and `APP_ENV=production` already forces Secure cookies.
+- **The prod compose profile is opt-in.** `docker compose up` keeps the dev experience: backend on :8000, frontend on :80, no TLS. `docker compose --profile prod up -d` adds the Caddy service and removes the need to expose backend/frontend ports directly (though they remain exposed for ops convenience).
+
+### Background jobs
+
+- **The cron scripts shell into the running backend container.** They run `python -m finance.scripts.sync_pending` / `backup_db` inside the same environment that has `.env` and the SQLite volume mounted. This avoids duplicating env loading in shell scripts.
+- **DB backup is a `shutil.copy2` of the live SQLite file.** At personal scale, hot-copying SQLite is reliable enough — there is no `.backup` API call. If write contention ever becomes a concern, switch to `sqlite3 .backup` against the live DB.
+- **Backup retention is hash-sorted, server-modified-time-sorted on Dropbox.** `prune_old_backups(keep=30)` lists, sorts desc by `server_modified`, deletes everything past index 30.
+
+### Observability
+
+- **JSON logging is opt-in via `python-json-logger`.** Falls back to plain `basicConfig` if the package isn't installed — keeps test environments friction-free. Uvicorn's three loggers (`uvicorn`, `uvicorn.access`, `uvicorn.error`) are explicitly rewired so the access log is also JSON.
+- **`/api/admin/stats` is auth-gated but not role-gated.** Single-user app, so any authenticated user sees it. If multi-tenancy is ever added, this endpoint needs a role check.
