@@ -1,13 +1,14 @@
 import { type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "../lib/utils";
-import { Home, Tags, Wallet, Receipt } from "lucide-react";
+import { Home, Tags, Wallet, Receipt, ArrowLeftRight } from "lucide-react";
 
 const navItems = [
   { to: "/", label: "Home", icon: Home },
   { to: "/transactions", label: "Txns", icon: Receipt },
   { to: "/categories", label: "Categories", icon: Tags },
   { to: "/budgets", label: "Budgets", icon: Wallet },
+  { to: "/import", label: "Quicken", icon: ArrowLeftRight },
 ] as const;
 
 export function Layout({ children }: { children: ReactNode }) {

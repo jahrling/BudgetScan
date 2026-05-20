@@ -118,6 +118,103 @@ Decisions, gotchas, and non-obvious implementation details accumulated during th
 - **No backend test for the new `is_pinned` field.** The migration and the schema fields are typed but unverified — needs a test that creates a budget with `is_pinned=true`, reads it back via `GET /api/budgets/status`, and asserts pinned-first ordering once the UI relies on it.
 - **The performance target (FCP < 1.5s on cold-cache iPhone over LAN) is unmeasured.** Code-splitting and the precache should make it achievable, but the actual number depends on bundle sizes and server speed.
 
+## Phase 8 — Quicken interop
+
+### Key decisions
+
+- **Hand-rolled OFX 1.x tokenizer, no library.** QFX is OFX SGML preceded by a
+  text header. The subset we actually consume (`ACCTID`, `CURDEF`, `STMTTRN`,
+  `DTPOSTED`, `TRNAMT`, `FITID`, `NAME`/`MEMO`) is trivial to walk with a regex
+  that tolerates unclosed value tags. Avoiding `ofxparse` or `ofxtools` keeps
+  the dep surface zero — important since this code path is exercised maybe
+  once a week.
+- **Stateless confirm endpoint.** Parse results are sent to the client and
+  echoed back into `/api/import/confirm`. No server-side session/staging
+  table — the import button on the UI is the only consumer and a quick page
+  refresh resets everything. Saves a model + migration we don't need.
+- **Match heuristic is `account + amount + same day` for duplicates and
+  `account + amount + ±2 days + has-receipt` for receipt merges.** The two
+  rules are evaluated in that order, so a same-day receipt-attached txn
+  reports as `duplicate` (default Skip) rather than `matched-receipt`. This
+  is intentional — if the day already matches, Quicken's data and ours
+  already agree on the date, no merge is needed.
+- **Merge action sets `status='final'` and copies `quicken_id` onto the
+  existing receipt-entered transaction.** No new row is created. This is how
+  receipts get their bank-side FITID; the splits the user already entered
+  stay untouched.
+- **Currency mismatch is a per-statement hard error.** When QFX `CURDEF`
+  disagrees with the mapped account's `currency`, every transaction in that
+  statement is skipped and an error is logged. A single bad row never aborts
+  the whole import — errors collect per-row in `ParseResult.errors`.
+- **`create_missing_categories` defaults to off.** Per the brief: missing
+  categories on import should error so the user is aware. The checkbox on
+  the import page flips it to true and any unknown colon-path is created as
+  a single flat category whose name is the full path (Quicken's convention).
+- **QIF account block uses display name as the key.** Quicken's QIF
+  `!Account` block carries the human-readable account name (`Main Checking`),
+  not a stable id. We try to match on `quicken_id` first, then fall back to
+  `Account.name`. Users still get prompted to map if neither matches.
+- **`_amount_to_cents` does string arithmetic, not float.** `12.345` is
+  rejected; `12.34` and `1,234.56` parse exactly. Float-then-round drops
+  cents on values like `0.05` on some platforms — string math avoids the
+  whole class of bug.
+- **Export emits both a primary `L<category>` and a full `S` split block,
+  even for single-line transactions.** Quicken accepts both; emitting the
+  splits unconditionally makes the QIF round-trip lossless when the same
+  file is re-imported into the app.
+
+### Non-obvious implementation details
+
+- **`Account.quicken_id` is the join key for QFX.** It maps to OFX `ACCTID`.
+  The import UI lets you patch it onto an existing account when the file
+  references an unmapped id — that PATCH persists so the next import doesn't
+  re-prompt.
+- **`_ofx_strip_header` finds the first `<OFX` tag and treats everything
+  before it as the SGML header.** Some banks emit Windows line endings and
+  charset headers; this just skips past the lot.
+- **`_parse_ofx_datetime` ignores the TZ suffix.** OFX dates like
+  `20240315[-5:EST]` get truncated to `20240315`; we treat all imported
+  dates as UTC midnight since the app's own posted_at semantics already
+  collapse to a date for budgeting.
+- **QIF round-trip is verified end-to-end in
+  `test_qif_roundtrip_preserves_splits`.** Import → confirm with
+  create-missing → export → re-import — assertion is that the two parsed
+  candidate lists are equal once normalized to `(amount, description,
+  sorted(splits))` tuples.
+
+### What tests don't cover
+
+- **No frontend tests for `/import` or `/export`.** The pages mount React
+  Query + multipart upload + a downloadable link target; none of that has a
+  Vitest case. The only frontend test in the repo is still `Home.test.tsx`.
+- **No real Quicken-exported QFX has been validated.** Tests use hand-built
+  fixtures that exercise the OFX subset we care about; bank-specific quirks
+  (e.g., Chase's inline `<MEMO>...</MEMO>` blocks, Vanguard's nested
+  `INVSTMTRS`) haven't been seen.
+- **No test for the actual round-trip into and out of Quicken itself.**
+  The reconciliation workflow in README.md is documented but unverified
+  against a real Quicken installation.
+- **No test for the unmapped-account UI flow.** The backend marks unmapped
+  ACCTIDs, the frontend lets you map or create — but there's no
+  integration test that re-importing the same file after mapping resolves
+  cleanly.
+- **No test for very large files.** Parsing is single-pass regex so it
+  should be fine into the tens of MB, but no benchmark exists.
+- **No test for `merge-with:<id>` outside the same-day duplicate path.** The
+  test suite exercises `create` and `skip`; the merge branch is logically
+  covered by `match_status='matched-receipt'` annotation but the end-to-end
+  POST flow that ships `merge-with:<id>` and then asserts the target txn
+  has `status='final'` and the new `quicken_id` is missing.
+- **No test for the `create_missing_categories=False` failure mode.** The
+  default is False (per the brief: "error so user is aware") but tests only
+  exercise the True path. A QIF with an unknown colon-path under the
+  default setting should surface in `result.errors` — currently
+  unverified.
+- **No test for the QFX→QFX round-trip.** We test QIF round-trip but
+  there's no export-as-QFX, so an inbound QFX → confirm → outbound QIF →
+  re-import path may quietly drop fields like `FITID` reuse semantics if
+  the user re-imports the same week twice.
+
 ## Phase 9 — Hardening & deploy
 
 ### Storage philosophy
