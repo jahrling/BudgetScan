@@ -43,6 +43,49 @@ npm run dev
 
 The Vite dev server proxies `/api` requests to `http://localhost:8000`.
 
+## Weekly Quicken reconciliation workflow
+
+Quicken stays your system of record for bank data; this app owns receipt
+splits and at-the-moment budgeting. The two stay in sync via QFX / QIF
+file exchange — about five minutes a week.
+
+1. **Pull bank data in Quicken** the usual way (One Step Update or manual
+   import). Let Quicken auto-match what it can.
+2. **Export the week as QFX** from Quicken: *File → File Export → QFX*.
+   Pick the account and the date range you want to bring into the app.
+3. **Import in the app** at `/import`. The candidate review table flags
+   each row:
+   - `new` — no existing transaction matches. Default action: **Create**.
+   - `duplicate` — same account + amount + day already exists. Default
+     action: **Skip** (you already entered it in the app, e.g. from a
+     receipt that hasn't been merged yet).
+   - `matched-receipt` — there's a receipt-entered transaction within ±2
+     days at the same amount. Default action: **Merge** — the bank's
+     FITID is annotated onto your existing receipt-split transaction and
+     it's marked `final`. Your line-item splits survive.
+
+   Click **Apply**. Unmapped account ids (a QFX `ACCTID` we've never
+   seen) are surfaced inline so you can map them once and they stick.
+4. **Export QIF back to Quicken** from `/export`. Pick the same date range
+   and accounts and download. In Quicken: *File → File Import → QIF File*,
+   choose "all accounts", and uncheck duplicates. This backfills the
+   per-category splits onto the rows Quicken pulled flat, so your Quicken
+   reports get the same line-item resolution the app has.
+
+The whole loop is purely file-based — the app never talks to Quicken
+directly. If something goes wrong, nothing gets written until you click
+**Apply**, and per-row errors collect in a list rather than failing the
+whole batch.
+
+### Categories on the QIF boundary
+
+Categories in QIF use Quicken's colon syntax (`Food:Groceries:Costco`).
+On export we always emit the full path of the category leaf. On import,
+unknown paths can either error out (default — surface to the user) or be
+auto-created as flat categories with the full colon path as the name
+(checkbox on the import page). Either way the app's own hierarchy stays
+intact; only inbound paths that don't match get the flat fallback.
+
 ## GPU Support
 
 To enable GPU passthrough for Ollama, uncomment the `deploy.resources` block in `docker-compose.yml`. Requires nvidia-container-toolkit.
