@@ -33,3 +33,8 @@ class ReceiptUpdate(BaseModel):
     ocr_model: str | None = None
     ocr_status: str | None = None
     ocr_error: str | None = None
+
+
+class ToTransactionRequest(BaseModel):
+    account_id: int
+    merchant_id: int | None = None

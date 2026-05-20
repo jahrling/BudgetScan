@@ -9,6 +9,7 @@ import Home from './routes/Home'
 import Categories from './routes/Categories'
 import Budgets from './routes/Budgets'
 import Transactions from './routes/Transactions'
+import ReceiptProcessing from './routes/ReceiptProcessing'
 import Login from './routes/Login'
 
 const queryClient = new QueryClient()
@@ -87,6 +88,14 @@ function App() {
           element={
             <AuthGuard>
               <Transactions />
+            </AuthGuard>
+          }
+        />
+        <Route
+          path="/receipts/:id/processing"
+          element={
+            <AuthGuard>
+              <ReceiptProcessing />
             </AuthGuard>
           }
         />

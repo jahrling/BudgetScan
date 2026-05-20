@@ -9,6 +9,7 @@ from finance.routers.auth import router as auth_router
 from finance.routers.budgets import router as budgets_router
 from finance.routers.categories import router as categories_router
 from finance.routers.merchants import router as merchants_router
+from finance.routers.receipts import router as receipts_router
 from finance.routers.transactions import router as transactions_router
 
 
@@ -25,6 +26,7 @@ app.include_router(categories_router)
 app.include_router(budgets_router)
 app.include_router(merchants_router)
 app.include_router(transactions_router)
+app.include_router(receipts_router)
 
 
 @app.get("/api/health")
