@@ -5,7 +5,6 @@ from pydantic import BaseModel
 
 class MerchantCreate(BaseModel):
     name: str
-    normalized_name: str
     default_category_id: int | None = None
     notes: str | None = None
 
@@ -15,6 +14,7 @@ class MerchantRead(BaseModel):
     name: str
     normalized_name: str
     default_category_id: int | None
+    default_category_name: str | None = None
     notes: str | None
     created_at: datetime
     updated_at: datetime
@@ -24,6 +24,5 @@ class MerchantRead(BaseModel):
 
 class MerchantUpdate(BaseModel):
     name: str | None = None
-    normalized_name: str | None = None
     default_category_id: int | None = None
     notes: str | None = None

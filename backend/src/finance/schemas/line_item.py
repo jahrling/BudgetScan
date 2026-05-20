@@ -4,7 +4,6 @@ from pydantic import BaseModel
 
 
 class LineItemCreate(BaseModel):
-    transaction_id: int
     category_id: int
     description: str | None = None
     quantity: float | None = None
@@ -18,6 +17,7 @@ class LineItemRead(BaseModel):
     id: int
     transaction_id: int
     category_id: int
+    category_name: str | None = None
     description: str | None
     quantity: float | None
     unit_price_cents: int | None
@@ -38,3 +38,7 @@ class LineItemUpdate(BaseModel):
     amount_cents: int | None = None
     ocr_confidence: float | None = None
     user_modified: bool | None = None
+
+
+class LineItemsReplace(BaseModel):
+    line_items: list[LineItemCreate]

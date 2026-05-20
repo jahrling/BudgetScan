@@ -56,6 +56,12 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     }),
+  put: <T>(path: string, body: unknown) =>
+    apiFetch<T>(`/api${path}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
   delete: (path: string) =>
     apiFetch<void>(`/api${path}`, { method: "DELETE" }),
 };

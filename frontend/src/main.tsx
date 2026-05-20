@@ -8,6 +8,7 @@ import NavBar from './components/NavBar'
 import Home from './routes/Home'
 import Categories from './routes/Categories'
 import Budgets from './routes/Budgets'
+import Transactions from './routes/Transactions'
 import Login from './routes/Login'
 
 const queryClient = new QueryClient()
@@ -78,6 +79,14 @@ function App() {
           element={
             <AuthGuard>
               <Budgets />
+            </AuthGuard>
+          }
+        />
+        <Route
+          path="/transactions"
+          element={
+            <AuthGuard>
+              <Transactions />
             </AuthGuard>
           }
         />
