@@ -20,8 +20,8 @@ Every assumption currently baked into the codebase that has not been validated a
 ## Authentication & security
 
 - **Single user only.** Every endpoint requires `current_user` but no endpoint filters data by user. If a second user were created (not possible via UI, but possible via direct DB insert), they'd see all data. The model is "single-user app" not "multi-tenant with one user."
-- **Session cookie security is adequate for LAN.** The cookie is signed but not encrypted, has no explicit `Secure` flag, no `SameSite` attribute set, and no CSRF protection. Assumed safe because the app runs on a home LAN. This assumption breaks the moment zero-trust remote access is added.
-- **No rate limiting.** Login, setup, and all API endpoints are unlimited. An attacker on the LAN could brute-force the password.
+- **Session cookie security is adequate for LAN.** ~~The cookie is signed but not encrypted, has no explicit `Secure` flag, no `SameSite` attribute set, and no CSRF protection.~~ **VALIDATED (Phase 9):** with `APP_ENV=production`, cookies are `HttpOnly + Secure + SameSite=Strict`, and a double-submit CSRF cookie is required on every state-changing `/api/*` request. Tests keep passing because enforcement is gated on `APP_ENV=production`.
+- **No rate limiting.** ~~Login, setup, and all API endpoints are unlimited.~~ **PARTIAL (Phase 9):** `POST /api/auth/login` is rate-limited to 5/min/IP via in-process middleware. Setup and other endpoints remain unlimited (LAN-only threat model).
 
 ## Merchant learning
 
@@ -41,6 +41,19 @@ Every assumption currently baked into the codebase that has not been validated a
 - **Python 3.11+ features are available.** Type syntax uses `X | None` (3.10+) and other modern Python. The dev machine has 3.13; the Docker image target hasn't been validated.
 - **SQLite async via aiosqlite is reliable.** The app uses `aiosqlite` which wraps synchronous sqlite3 in a thread. Under Uvicorn's single-worker default, concurrent requests serialize at the DB level. This hasn't been stress-tested.
 - **The `data/` directory exists and is writable.** The backend expects `data/finance.db` relative to CWD. In Docker this is a mounted volume; in dev, the directory must be manually created. There's no startup check or helpful error message — it just crashes with `sqlite3.OperationalError: unable to open database file`.
+
+## Phase 9 — Hardening & deploy
+
+- **Pillow `verify()` rejects everything except images.** VALIDATED via the existing receipt-upload test suite (PNGs created with `Image.new` pass; the contract holds for the obvious case but adversarial inputs — HEIC with malformed metadata, image polyglots — were not tested.
+- **`dropbox-sdk-python` is the right abstraction for the upload-verify-delete loop.** UNTESTED end-to-end. The `content_hash` (4 MiB-block sha256-of-sha256s) match is the only confirmation we trust before unlinking the local file. If Dropbox ever changes the hash semantics, every local image deletion becomes a silent data loss until you read the release notes. Pin `dropbox>=12.0` and watch the changelog.
+- **A single long-lived Dropbox access token is acceptable.** UNTESTED. The token has no rotation automation and is loaded once at process start. If the token is revoked mid-run, the next upload raises and the local file is retained — which is the correct behavior, but the operator only finds out by reading logs or the admin stats endpoint.
+- **`shutil.copy2` of the live SQLite file produces a consistent backup.** UNTESTED. Works because the app is single-user and writes are short. If a backup ever lands mid-write, the gzip + Dropbox upload still succeeds but the restored DB might fail integrity checks. Switch to `sqlite3 .backup` if this turns out to be a problem in practice.
+- **Caddy's internal CA is trusted on the user's iPhone.** UNTESTED. Steps documented in RUNBOOK.md §2 but not yet performed. Until trusted, camera capture works only after dismissing a cert warning, which iOS sometimes hides behind several taps.
+- **Ollama ≥ 0.6 + CUDA 12.8+ runs Qwen2.5-VL-7B on the RTX 5070 Ti.** UNTESTED on the actual hardware. The Blackwell-family compute capability is new enough that older Ollama builds error out at load time. Verify with `ollama run qwen2.5vl:7b "hello"` per RUNBOOK §1.6 before declaring the deploy healthy.
+- **CSRF middleware does not break the existing PWA.** UNTESTED in the browser. The frontend has not yet been wired to read the `csrf_token` cookie and echo it back as `X-CSRF-Token` on POST/PUT/DELETE. Enforcement only kicks in when `APP_ENV=production`, so dev keeps working, but a production deploy will 403 every write until the frontend is updated.
+- **`docker compose --profile prod up -d` actually brings everything up healthy.** UNTESTED. The healthchecks were written by hand against the documented service shapes (uvicorn for backend, nginx for frontend, `ollama list` for Ollama) but never observed against a live stack.
+- **The hourly cron's container-exec model survives `docker compose up -d` restarts.** UNTESTED. `docker compose exec -T backend python -m ...` requires the backend container to be running. If the container crashed before the cron fired, the run silently fails — there is no alerting on the cron itself yet.
+- **The smoke test's PNG fixture survives a real Qwen2.5-VL pass.** UNTESTED. The 64×64 gray square has no actual receipt content; the model may return an empty `items[]` and the smoke test's "OCR done" assertion still passes (status reaches `done`, which only requires the JSON parse to succeed). For a meaningful smoke run, swap in a real receipt photo.
 
 ## Transaction model
 

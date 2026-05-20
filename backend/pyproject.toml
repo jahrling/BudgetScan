@@ -15,6 +15,8 @@ dependencies = [
     "itsdangerous>=2.2",
     "passlib[argon2]>=1.7",
     "pillow>=10.0",
+    "dropbox>=12.0",
+    "python-json-logger>=2.0",
 ]
 
 [project.optional-dependencies]

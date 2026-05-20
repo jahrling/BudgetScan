@@ -1,31 +1,51 @@
 services:
   backend:
     build: ./backend
+    profiles: ["", "dev", "prod"]
+    expose:
+      - "8000"
     ports:
       - "8000:8000"
     volumes:
       - db-data:/app/data
       - receipts:/app/data/receipts
     env_file: .env
-    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health', timeout=2)"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    restart: always
 
   frontend:
     build: ./frontend
-    ports:
-      - "80:80"
+    profiles: ["", "dev", "prod"]
+    expose:
+      - "80"
     depends_on:
       - backend
-    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    restart: always
 
   ollama:
     image: ollama/ollama:latest
+    profiles: ["", "dev", "prod"]
     ports:
       - "11434:11434"
     volumes:
       - ollama-models:/root/.ollama
-    restart: unless-stopped
-    # GPU passthrough — uncomment the deploy block below if you have an
-    # NVIDIA GPU with the nvidia-container-toolkit installed.
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+    restart: always
+    # GPU passthrough — uncomment for an NVIDIA GPU with nvidia-container-toolkit.
+    # RTX 5070 Ti (Blackwell) requires Ollama ≥ 0.6 and CUDA 12.8+ on the host.
     # deploy:
     #   resources:
     #     reservations:
@@ -34,7 +54,27 @@ services:
     #           count: 1
     #           capabilities: [gpu]
 
+  # Production-only: TLS-terminating reverse proxy. Disabled in default/dev
+  # profile so `docker compose up` keeps working with direct ports.
+  caddy:
+    image: caddy:2-alpine
+    profiles: ["prod"]
+    ports:
+      - "80:80"
+      - "443:443"
+      - "2019:2019"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - backend
+      - frontend
+    restart: always
+
 volumes:
   db-data:
   receipts:
   ollama-models:
+  caddy-data:
+  caddy-config:
