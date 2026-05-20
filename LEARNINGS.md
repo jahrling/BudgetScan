@@ -88,3 +88,41 @@ Decisions, gotchas, and non-obvious implementation details accumulated during th
 - **No test for the categorizer cache.** The `_CACHE` dict is process-scoped; `clear_cache()` exists for tests but no test verifies that two consecutive identical descriptions hit the cache instead of the LLM.
 - **No test for `force=true` actually re-running OCR.** The test triggers initial processing via `?force=true` for determinism; the "skip if already done" path is exercised only implicitly.
 - **No test for storage path layout.** The yyyy/mm/sha256 layout is asserted only via the side effect that the file is readable; the path structure itself is not validated.
+
+---
+
+## Human-loop testing required
+
+Things the automated suite and the stubbed-OCR smoke run (`backend/scripts/smoke_*`) can't validate. These need a person, real hardware, or a real receipt. Carry this list forward across phases — append, don't overwrite.
+
+### Phase 6 — Receipt OCR
+
+| # | What to verify | Why automation can't | How to test |
+|---|---|---|---|
+| H-6.1 | `qwen2.5vl:7b` returns the JSON shape our prompt asks for on a real receipt photo | OCR is mocked in every test; the prompt is best-guess | `ollama pull qwen2.5vl:7b`, run the real stack, snap a real receipt, inspect `receipts.ocr_raw_json` |
+| H-6.2 | Cold-load + inference fits inside the 60 s frontend polling window on the target GPU | Depends on hardware (assumption #23) | First snap after `ollama serve` starts; watch the "Processing…" elapsed timer |
+| H-6.3 | `qwen2.5:7b` categorizer suggestions are useful in practice (not just non-null) | Quality is subjective | Snap 5+ receipts across different merchants, count how many lines you have to re-categorize |
+| H-6.4 | iPhone Safari opens the back camera on tap (not the file picker / front camera) | Browser-specific, device-specific | Install PWA on actual iPhone, tap **Snap receipt** on Home |
+| H-6.5 | Photographed receipt orientation is corrected by `ImageOps.exif_transpose` | Depends on actual iPhone EXIF tags | Photograph a receipt in portrait, then landscape; confirm both OCR correctly |
+| H-6.6 | Thermal-paper / faded / crumpled receipts produce usable output (or fail cleanly) | No corpus of bad receipts in CI | Try a fading CVS receipt, a crumpled gas receipt, a long Costco receipt |
+| H-6.7 | The split editor renders well on iPhone SE (smallest current screen) — touch targets, scrolling, "Remove" affordance | Untested per assumption #35 | Open a 10+ line receipt on a real iPhone SE |
+| H-6.8 | PWA install-to-home-screen works from Safari and the camera flow survives standalone mode | iOS PWA quirks per assumption #18 | Add to home screen, open from icon, try **Snap receipt** |
+| H-6.9 | Re-categorization persists through QIF export later (Phase 8 cross-check) | Cross-phase | Defer until Phase 8 is done; revisit then |
+| H-6.10 | 60 s timeout escape hatch reaches the manual-entry fallback with the receipt attached | UI flow; hard to assert without a real slow Ollama | Stop `ollama serve` mid-poll, wait 60 s, confirm "Enter manually" → Add dialog shows the image |
+| H-6.11 | Ollama's `/api/generate` with `format=json` doesn't wrap output in prose on this model + version | Model-version-dependent | Add a debug log of raw `response` in `ocr.py` for one snap, eyeball it |
+
+### Backlog from earlier phases (still open)
+
+| # | What to verify | Notes |
+|---|---|---|
+| H-1.1 | Docker Compose stack starts cleanly on the home server (not just `docker compose build`) | Assumption #2 / #4 — GPU passthrough only works on native Linux |
+| H-1.2 | Caddy / reverse-proxy setup once Phase 9 lands | Currently `secure=False` cookies; flips at Phase 9 |
+| H-3.1 | 30-day session cookie actually expires after 30 days | Untested per LEARNINGS Phase 3 |
+| H-3.2 | Single-user `/setup` 409 enforcement under concurrent requests | Race window noted in Phase 3 gaps |
+| H-4.1 | Overlapping monthly budgets for the same category — observe the double-count and decide whether to constrain | Assumption #12 |
+| H-5.1 | Costco-length receipt (50+ line items) doesn't choke the SplitEditor | Assumption #2 of Phase 5 |
+| H-5.2 | Backend behavior when deleting an account or category that's referenced by line items | Phase 5 test gap |
+
+### How to use this list
+
+When you sit down to do real-device testing, work top-down. Append a date + outcome next to each item as you verify it. When something fails, file it back as a code change rather than leaving it on the list. The list shrinks over time; phases past close out their rows but stay visible so we don't repeat them.
