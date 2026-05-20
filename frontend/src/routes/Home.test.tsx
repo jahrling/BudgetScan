@@ -18,8 +18,13 @@ function renderWithProviders() {
 }
 
 describe('Home', () => {
-  it('renders the heading', () => {
+  it('renders the dashboard heading', () => {
     renderWithProviders()
-    expect(screen.getByText('Finance')).toBeInTheDocument()
+    expect(screen.getByText(/What I can spend/i)).toBeInTheDocument()
+  })
+
+  it('renders the snap-receipt FAB', () => {
+    renderWithProviders()
+    expect(screen.getByLabelText(/Snap receipt/i)).toBeInTheDocument()
   })
 })

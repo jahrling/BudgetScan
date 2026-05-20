@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Pencil, Pin, PinOff, Plus, Trash2 } from "lucide-react";
 import { Layout } from "../components/Layout";
 import { Button } from "../components/ui/button";
 import { Label } from "../components/ui/label";
@@ -132,6 +132,24 @@ export default function Budgets() {
                     </p>
                   </div>
                   <div className="flex gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className={cn(
+                        "h-7 w-7",
+                        b.is_pinned ? "text-sky-600" : "text-gray-400",
+                      )}
+                      aria-label={b.is_pinned ? "Unpin" : "Pin"}
+                      onClick={() =>
+                        updateMut.mutate({ id: b.id, is_pinned: !b.is_pinned })
+                      }
+                    >
+                      {b.is_pinned ? (
+                        <Pin className="h-3.5 w-3.5 fill-current" />
+                      ) : (
+                        <PinOff className="h-3.5 w-3.5" />
+                      )}
+                    </Button>
                     <Button
                       variant="ghost"
                       size="icon"

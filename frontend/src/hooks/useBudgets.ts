@@ -46,6 +46,7 @@ export function useUpdateBudget() {
       amount_cents?: number;
       start_date?: string;
       end_date?: string | null;
+      is_pinned?: boolean;
     }) => api.patch<Budget>(`/budgets/${id}`, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["budgets"] });
