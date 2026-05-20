@@ -1,10 +1,11 @@
 import { type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "../lib/utils";
-import { Home, Tags, Wallet } from "lucide-react";
+import { Home, Tags, Wallet, Receipt } from "lucide-react";
 
 const navItems = [
   { to: "/", label: "Home", icon: Home },
+  { to: "/transactions", label: "Txns", icon: Receipt },
   { to: "/categories", label: "Categories", icon: Tags },
   { to: "/budgets", label: "Budgets", icon: Wallet },
 ] as const;
