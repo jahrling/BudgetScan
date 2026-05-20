@@ -12,7 +12,7 @@ export function useAccounts() {
 export function useCreateAccount() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { name: string; type: string }) =>
+    mutationFn: (data: { name: string; type: string; quicken_id?: string | null }) =>
       api.post<Account>("/accounts", data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["accounts"] }),
   });

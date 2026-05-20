@@ -49,10 +49,78 @@ Every assumption currently baked into the codebase that has not been validated a
 - **Status values are unenforced strings.** The status field accepts any string — `pending`, `split`, `final` are conventions, not constraints. A typo in status (e.g., from a future API caller) would silently succeed.
 - **Deleting a transaction hard-deletes.** No soft delete, no trash, no undo. The line items are explicitly deleted first, then the transaction. There is no audit trail.
 
-## Quicken interop (future phases)
+## Quicken interop (Phase 8 — now active, untested against real Quicken)
 
-- **QIF format will be sufficient.** The architecture assumes QIF as the interchange format with Quicken. QIF is ancient and lossy — it doesn't support split categories well in all Quicken versions. This hasn't been validated against a modern Quicken import.
-- **Bank transaction matching is solvable.** Phase 8 assumes imported bank transactions can be matched to manually-entered receipt transactions. The matching strategy (by date + amount? by Quicken ID?) hasn't been designed.
+- **The user's Quicken version accepts our QIF dialect.** We emit `!Account`
+  + `!Type:Bank/CCard/Cash/Invst`, `D`/`T`/`P`/`L` lines, and `S/E/$` split
+  blocks with colon-joined category paths. This is the documented Quicken
+  QIF format but has not been validated against any actual Quicken
+  installation. Modern Quicken (Quicken Premier 2023+) deprecates QIF for
+  bank accounts entirely and only accepts it for cash/asset accounts —
+  unverified whether the user's version has this restriction.
+- **QFX is OFX 1.x SGML.** The parser handles inline value tags
+  (`<TRNAMT>-50.00`) and tolerates missing closing tags. OFX 2.x (XML) is
+  not handled. Banks that ship QFX 2.x will fail to parse, returning an
+  empty candidate list with no useful error.
+- **Bank QFX dialects fit our subset.** We only read `ACCTID`, `CURDEF`,
+  `STMTTRN`, `DTPOSTED`, `TRNAMT`, `FITID`, `NAME`, `MEMO`, `PAYEEID`.
+  Chase, Vanguard, Capital One, etc., each emit variants — inline `<MEMO>`,
+  nested `INVSTMTRS`, alternative ACCTID locations. None of these have
+  been validated against real bank exports.
+- **Match heuristic catches the cases we care about.** Duplicate = same
+  account + same amount + same calendar day. Receipt merge = same account +
+  same amount + ±2-day window + has-receipt. Untested at scale: two
+  legitimate same-day same-amount purchases (two coffees in one day) would
+  collapse into one. The user has to manually flip the action to `create`
+  in that case.
+- **FITID is stable across re-downloads.** Banks are supposed to keep
+  FITIDs stable per transaction, but in practice some banks (especially
+  credit card pending → posted transitions) reassign them. We store FITID
+  as `quicken_id` but currently don't index on it or use it as the
+  duplicate key — relying on date+amount instead. If the user re-imports
+  the same week twice with a different account-mapping config, they could
+  get duplicates that our heuristic misses.
+- **`Account.quicken_id` is the right join key.** QFX `ACCTID` is a string
+  bank account number or institution-specific id. The user enters it once
+  (or maps it on first import) and we trust it to be stable. Banks
+  occasionally renumber accounts; we don't detect this.
+- **QIF account-block names match `Account.name` when `quicken_id` is
+  unset.** A fallback that's fine for the single-user case but would
+  silently misroute if two accounts share a name.
+- **Categories should be created as flat colon-paths on import miss.**
+  When `create_missing_categories=True`, "Food:Groceries:Costco" becomes a
+  single category named `Food:Groceries:Costco`, not a three-level
+  hierarchy. This loses Quicken's category nesting. Unvalidated whether
+  the user wants this or whether the app should reconstruct the hierarchy
+  — the default is to error out instead.
+- **Per-row errors don't poison the transaction.** A bad row in
+  `apply_confirmations` adds to `result.errors` and triggers a rollback
+  of the entire batch (not just the bad row). Untested whether users
+  prefer "skip bad, commit good" vs. the current "all or nothing."
+- **No locking on concurrent imports.** Two simultaneous `/api/import/confirm`
+  POSTs would each independently check for duplicates and could both
+  create transactions for the same FITID. Single-user assumption makes
+  this academic but it's not enforced.
+- **`status='final'` after merge is not used anywhere.** The merge path
+  flips a manual receipt transaction to `final` to mark "Quicken
+  agrees" — but no downstream code, UI badge, or query filter actually
+  reads this status. It's a marker for the user via API, not a behavior.
+- **No re-import idempotency.** Running the same import twice creates
+  duplicates the second time only insofar as the date-amount-account
+  heuristic catches them; if anything about the candidate has drifted
+  (e.g., the user split it after the first import, changing the line-item
+  layout), the second import will see "no exact-amount match on that day"
+  and create a fresh duplicate.
+- **Export emits both `L` and `S` lines unconditionally.** Some Quicken
+  versions complain when both are present, others require it. Untested.
+- **Date semantics on export are local-naive.** `txn.posted_at.strftime('%m/%d/%Y')`
+  emits whatever date the datetime carries, which is UTC after import.
+  Receipts entered in the evening of a US timezone may appear to land a
+  day later when round-tripped through QIF. Not corrected for.
+- **Currency mismatch always means the user's account is wrong.** A QFX
+  `CURDEF` that disagrees with the mapped account's `currency` skips the
+  whole statement. We don't offer a "force import as USD anyway"
+  override, and we don't auto-convert.
 
 ## OCR (Phase 6 — now active, still mostly untested)
 

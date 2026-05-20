@@ -13,6 +13,8 @@ const Budgets = lazy(() => import('./routes/Budgets'))
 const Transactions = lazy(() => import('./routes/Transactions'))
 const ReceiptProcessing = lazy(() => import('./routes/ReceiptProcessing'))
 const Login = lazy(() => import('./routes/Login'))
+const ImportPage = lazy(() => import('./routes/Import'))
+const ExportPage = lazy(() => import('./routes/Export'))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -97,6 +99,22 @@ function App() {
             element={
               <AuthGuard>
                 <ReceiptProcessing />
+              </AuthGuard>
+            }
+          />
+          <Route
+            path="/import"
+            element={
+              <AuthGuard>
+                <ImportPage />
+              </AuthGuard>
+            }
+          />
+          <Route
+            path="/export"
+            element={
+              <AuthGuard>
+                <ExportPage />
               </AuthGuard>
             }
           />
