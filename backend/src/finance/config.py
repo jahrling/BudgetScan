@@ -11,10 +11,15 @@ class Settings(BaseSettings):
     ollama_base_url: str = ""  # alias accepted from .env; falls back to ollama_url
     ollama_vision_model: str = "qwen2.5vl:7b"
     ollama_text_model: str = "qwen2.5:7b"
+    ollama_embed_model: str = "nomic-embed-text"
     ollama_timeout_seconds: float = 120.0
     receipts_dir: str = "data/receipts"
     receipt_staging_dir: str = ""  # alias; falls back to receipts_dir
     max_receipt_upload_bytes: int = 10 * 1024 * 1024
+
+    # Local vector index for the summarization/RAG layer (prose only — never
+    # transaction numbers). Lives under data/ so it stays gitignored.
+    vector_index_dir: str = "data/vector"
 
     # Dropbox archive
     dropbox_access_token: str = ""

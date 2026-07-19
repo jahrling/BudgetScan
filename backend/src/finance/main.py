@@ -8,6 +8,8 @@ from finance.db import init_db
 from finance.logging_setup import configure_json_logging
 from finance.routers.accounts import router as accounts_router
 from finance.routers.admin import router as admin_router
+from finance.routers.annotations import router as annotations_router
+from finance.routers.ask import router as ask_router
 from finance.routers.auth import router as auth_router
 from finance.routers.budgets import router as budgets_router
 from finance.routers.categories import router as categories_router
@@ -38,6 +40,8 @@ app.include_router(merchants_router)
 app.include_router(transactions_router)
 app.include_router(receipts_router)
 app.include_router(admin_router)
+app.include_router(annotations_router)
+app.include_router(ask_router)
 app.include_router(quicken_import_router)
 app.include_router(quicken_export_router)
 

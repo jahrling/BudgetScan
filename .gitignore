@@ -20,8 +20,19 @@ dist/
 .env.local
 .env.*.local
 
-# Data (mounted volumes)
+# Data (mounted volumes): SQLite DB, receipts, and the local vector index
 data/
+
+# Vector index (also lives under data/, pinned here explicitly)
+**/vector/
+*.faiss
+*.npz
+
+# Quicken exchange files — real financial data, never commit
+*.qfx
+*.qif
+*.qbo
+*.ofx
 
 # IDE
 .vscode/

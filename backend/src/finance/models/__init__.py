@@ -7,6 +7,7 @@ from finance.models.merchant import Merchant
 from finance.models.transaction import Transaction
 from finance.models.line_item import LineItem
 from finance.models.receipt import Receipt
+from finance.models.annotation import Annotation
 
 __all__ = [
     "Base",
@@ -18,4 +19,5 @@ __all__ = [
     "Transaction",
     "LineItem",
     "Receipt",
+    "Annotation",
 ]
