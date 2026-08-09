@@ -15,8 +15,6 @@ const ReceiptProcessing = lazy(() => import('./routes/ReceiptProcessing'))
 const ReceiptReview = lazy(() => import('./routes/ReceiptReview'))
 const Login = lazy(() => import('./routes/Login'))
 const QuickenSync = lazy(() => import('./routes/QuickenSync'))
-const ImportPage = lazy(() => import('./routes/Import'))
-const ExportPage = lazy(() => import('./routes/Export'))
 
 const queryClient = new QueryClient({
   defaultOptions: {
