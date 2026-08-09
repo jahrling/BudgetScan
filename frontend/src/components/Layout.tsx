@@ -8,7 +8,7 @@ const navItems = [
   { to: "/transactions", label: "Txns", icon: Receipt },
   { to: "/categories", label: "Categories", icon: Tags },
   { to: "/budgets", label: "Budgets", icon: Wallet },
-  { to: "/import", label: "Quicken", icon: ArrowLeftRight },
+  { to: "/sync", label: "Sync", icon: ArrowLeftRight },
 ] as const;
 
 export function Layout({ children }: { children: ReactNode }) {

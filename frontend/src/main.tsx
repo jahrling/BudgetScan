@@ -14,6 +14,7 @@ const Transactions = lazy(() => import('./routes/Transactions'))
 const ReceiptProcessing = lazy(() => import('./routes/ReceiptProcessing'))
 const ReceiptReview = lazy(() => import('./routes/ReceiptReview'))
 const Login = lazy(() => import('./routes/Login'))
+const QuickenSync = lazy(() => import('./routes/QuickenSync'))
 const ImportPage = lazy(() => import('./routes/Import'))
 const ExportPage = lazy(() => import('./routes/Export'))
 
@@ -112,21 +113,15 @@ function App() {
             }
           />
           <Route
-            path="/import"
+            path="/sync"
             element={
               <AuthGuard>
-                <ImportPage />
+                <QuickenSync />
               </AuthGuard>
             }
           />
-          <Route
-            path="/export"
-            element={
-              <AuthGuard>
-                <ExportPage />
-              </AuthGuard>
-            }
-          />
+          <Route path="/import" element={<Navigate to="/sync" replace />} />
+          <Route path="/export" element={<Navigate to="/sync" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Suspense>
