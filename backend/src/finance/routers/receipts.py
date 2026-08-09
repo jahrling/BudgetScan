@@ -14,7 +14,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from finance.auth.dependencies import current_user
 from finance.db import async_session_factory, get_session
-from finance.schemas.receipt import ReceiptRead, ToTransactionRequest
+from finance.schemas.receipt import (
+    OcrPreviewResponse,
+    ReceiptRead,
+    ReviewTransactionRequest,
+    ToTransactionRequest,
+)
 from finance.schemas.transaction import TransactionDetail
 from finance.services import receipt as receipt_service
 
@@ -98,4 +103,30 @@ async def receipt_to_transaction(
         receipt_id,
         account_id=data.account_id,
         merchant_id=data.merchant_id,
+    )
+
+
+@router.get("/{receipt_id}/ocr-preview", response_model=OcrPreviewResponse)
+async def ocr_preview(
+    receipt_id: int,
+    session: AsyncSession = Depends(get_session),
+):
+    return await receipt_service.build_ocr_preview(session, receipt_id)
+
+
+@router.post("/{receipt_id}/review-to-transaction", response_model=TransactionDetail)
+async def reviewed_receipt_to_transaction(
+    receipt_id: int,
+    data: ReviewTransactionRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    return await receipt_service.materialize_reviewed_transaction(
+        session,
+        receipt_id,
+        account_id=data.account_id,
+        merchant_name=data.merchant_name,
+        merchant_id=data.merchant_id,
+        posted_at=data.posted_at,
+        total_cents=data.total_cents,
+        items=[it.model_dump() for it in data.items],
     )

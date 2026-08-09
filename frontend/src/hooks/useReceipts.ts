@@ -1,6 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, apiFetch, ApiError } from "../lib/api";
-import type { Receipt, TransactionDetail } from "../types/models";
+import type {
+  OcrPreviewResponse,
+  Receipt,
+  ReviewTransactionRequest,
+  TransactionDetail,
+} from "../types/models";
 
 export function useReceipt(id: number | null, refetchIntervalMs?: number | false) {
   return useQuery({
@@ -89,6 +94,33 @@ export function useReceiptToTransaction() {
         account_id,
         merchant_id: merchant_id ?? null,
       }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["transactions"] });
+      qc.invalidateQueries({ queryKey: ["budgets"] });
+    },
+  });
+}
+
+export function useOcrPreview(receiptId: number | null) {
+  return useQuery({
+    queryKey: ["ocr-preview", receiptId],
+    queryFn: () => api.get<OcrPreviewResponse>(`/receipts/${receiptId}/ocr-preview`),
+    enabled: receiptId !== null,
+    staleTime: Infinity,
+  });
+}
+
+export function useReviewToTransaction() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      receiptId,
+      ...body
+    }: ReviewTransactionRequest & { receiptId: number }) =>
+      api.post<TransactionDetail>(
+        `/receipts/${receiptId}/review-to-transaction`,
+        body,
+      ),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["transactions"] });
       qc.invalidateQueries({ queryKey: ["budgets"] });

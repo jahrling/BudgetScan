@@ -39,3 +39,43 @@ class ReceiptUpdate(BaseModel):
 class ToTransactionRequest(BaseModel):
     account_id: int
     merchant_id: int | None = None
+
+
+# --- OCR review screen schemas ---
+
+
+class OcrPreviewItem(BaseModel):
+    description: str | None = None
+    quantity: float | None = None
+    unit_price_cents: int | None = None
+    amount_cents: int
+    suggested_category_id: int
+    suggested_category_name: str | None = None
+
+
+class OcrPreviewResponse(BaseModel):
+    merchant: str | None = None
+    date: str | None = None
+    total_cents: int
+    subtotal_cents: int | None = None
+    tax_cents: int | None = None
+    items: list[OcrPreviewItem]
+    drift_cents: int
+
+
+class ReviewLineItem(BaseModel):
+    description: str | None = None
+    quantity: float | None = None
+    unit_price_cents: int | None = None
+    amount_cents: int
+    category_id: int
+    user_modified: bool = False
+
+
+class ReviewTransactionRequest(BaseModel):
+    account_id: int
+    merchant_name: str | None = None
+    merchant_id: int | None = None
+    posted_at: datetime
+    total_cents: int
+    items: list[ReviewLineItem]

@@ -117,3 +117,40 @@ export interface Receipt {
   created_at: string;
   updated_at: string;
 }
+
+export interface OcrPreviewItem {
+  description: string | null;
+  quantity: number | null;
+  unit_price_cents: number | null;
+  amount_cents: number;
+  suggested_category_id: number;
+  suggested_category_name: string | null;
+}
+
+export interface OcrPreviewResponse {
+  merchant: string | null;
+  date: string | null;
+  total_cents: number;
+  subtotal_cents: number | null;
+  tax_cents: number | null;
+  items: OcrPreviewItem[];
+  drift_cents: number;
+}
+
+export interface ReviewLineItem {
+  description: string | null;
+  quantity: number | null;
+  unit_price_cents: number | null;
+  amount_cents: number;
+  category_id: number;
+  user_modified: boolean;
+}
+
+export interface ReviewTransactionRequest {
+  account_id: number;
+  merchant_name: string | null;
+  merchant_id: number | null;
+  posted_at: string;
+  total_cents: number;
+  items: ReviewLineItem[];
+}
