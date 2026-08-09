@@ -338,6 +338,156 @@ async def materialize_transaction(
     return await get_transaction_with_items(session, txn.id)
 
 
+async def build_ocr_preview(
+    session: AsyncSession,
+    receipt_id: int,
+) -> dict:
+    """Parse a receipt's OCR JSON and return structured preview with category suggestions."""
+    receipt = await get_receipt(session, receipt_id)
+    if receipt.ocr_status != "done" or not receipt.ocr_raw_json:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Receipt not ready for review (status={receipt.ocr_status})",
+        )
+
+    try:
+        parsed = json.loads(receipt.ocr_raw_json)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=500, detail=f"Receipt JSON is corrupt: {exc}") from exc
+
+    total_cents = _to_cents(parsed.get("total"))
+    if total_cents is None or total_cents <= 0:
+        raise HTTPException(status_code=400, detail="Parsed receipt has no usable total")
+
+    subtotal_cents = _to_cents(parsed.get("subtotal"))
+    tax_cents = _to_cents(parsed.get("tax"))
+
+    items_raw = parsed.get("items") or []
+    items_valid: list[tuple[dict[str, Any], int]] = []
+    for it in items_raw:
+        amt = _to_cents(it.get("amount"))
+        if amt is None or amt <= 0:
+            continue
+        items_valid.append((it, amt))
+
+    items_sum = sum(c for _, c in items_valid)
+    drift = total_cents - items_sum
+
+    cat_ids: list[int] = []
+    cat_names: dict[int, str] = {}
+    if items_valid:
+        from finance.models.category import Category as CategoryModel
+
+        cat_ids = await suggest_categories(
+            session, [it for it, _ in items_valid], merchant=None,
+        )
+        from sqlalchemy import select as sa_select
+
+        cats = await session.execute(sa_select(CategoryModel))
+        cat_names = {c.id: c.name for c in cats.scalars().all()}
+
+    preview_items = []
+    for idx, (it, amt) in enumerate(items_valid):
+        cid = cat_ids[idx] if idx < len(cat_ids) else 0
+        preview_items.append({
+            "description": it.get("description"),
+            "quantity": _safe_float(it.get("qty")),
+            "unit_price_cents": _to_cents(it.get("unit_price")),
+            "amount_cents": amt,
+            "suggested_category_id": cid,
+            "suggested_category_name": cat_names.get(cid),
+        })
+
+    return {
+        "merchant": parsed.get("merchant"),
+        "date": parsed.get("date"),
+        "total_cents": total_cents,
+        "subtotal_cents": subtotal_cents,
+        "tax_cents": tax_cents,
+        "items": preview_items,
+        "drift_cents": drift,
+    }
+
+
+async def materialize_reviewed_transaction(
+    session: AsyncSession,
+    receipt_id: int,
+    *,
+    account_id: int,
+    merchant_name: str | None,
+    merchant_id: int | None,
+    posted_at: datetime,
+    total_cents: int,
+    items: list[dict],
+) -> dict:
+    """Create a transaction from user-reviewed OCR data."""
+    receipt = await get_receipt(session, receipt_id)
+    if receipt.ocr_status != "done":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Receipt not ready (status={receipt.ocr_status})",
+        )
+
+    if not items:
+        uncategorized = await _get_or_create_uncategorized(session)
+        items = [{
+            "category_id": uncategorized.id,
+            "description": merchant_name,
+            "amount_cents": total_cents,
+            "user_modified": True,
+        }]
+
+    txn = Transaction(
+        account_id=account_id,
+        merchant_id=merchant_id,
+        posted_at=posted_at,
+        amount_cents=total_cents,
+        description=merchant_name,
+        receipt_id=receipt.id,
+        status="pending",
+    )
+    session.add(txn)
+    await session.flush()
+
+    items_sum = sum(it["amount_cents"] for it in items)
+    drift = total_cents - items_sum
+
+    for it in items:
+        session.add(
+            LineItem(
+                transaction_id=txn.id,
+                category_id=it["category_id"],
+                description=it.get("description") or "",
+                quantity=it.get("quantity"),
+                unit_price_cents=it.get("unit_price_cents"),
+                amount_cents=it["amount_cents"],
+                user_modified=it.get("user_modified", False),
+            )
+        )
+
+    if drift != 0:
+        uncategorized = await _get_or_create_uncategorized(session)
+        session.add(
+            LineItem(
+                transaction_id=txn.id,
+                category_id=uncategorized.id,
+                description="Tax / rounding",
+                amount_cents=drift,
+            )
+        )
+
+    line_count = len(items) + (1 if drift != 0 else 0)
+    txn.status = "split" if line_count > 1 else "pending"
+
+    await session.commit()
+    await session.refresh(txn)
+
+    if txn.merchant_id:
+        await maybe_update_default_category(session, txn.merchant_id)
+
+    return await get_transaction_with_items(session, txn.id)
+
+
 def _safe_float(value: Any) -> float | None:
     if value is None:
         return None

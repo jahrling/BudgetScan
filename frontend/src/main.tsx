@@ -12,6 +12,7 @@ const Categories = lazy(() => import('./routes/Categories'))
 const Budgets = lazy(() => import('./routes/Budgets'))
 const Transactions = lazy(() => import('./routes/Transactions'))
 const ReceiptProcessing = lazy(() => import('./routes/ReceiptProcessing'))
+const ReceiptReview = lazy(() => import('./routes/ReceiptReview'))
 const Login = lazy(() => import('./routes/Login'))
 const ImportPage = lazy(() => import('./routes/Import'))
 const ExportPage = lazy(() => import('./routes/Export'))
@@ -99,6 +100,14 @@ function App() {
             element={
               <AuthGuard>
                 <ReceiptProcessing />
+              </AuthGuard>
+            }
+          />
+          <Route
+            path="/receipts/:id/review"
+            element={
+              <AuthGuard>
+                <ReceiptReview />
               </AuthGuard>
             }
           />
