@@ -69,7 +69,7 @@ class TransactionCandidate:
     cleared: str | None = None  # None | '*' (cleared) | 'X' (reconciled)
     transfer_account: str | None = None  # populated when L=[Account Name]
     # Populated by match_candidates():
-    match_status: str = "new"  # 'new' | 'duplicate' | 'matched-receipt'
+    match_status: str = "new"  # 'new' | 'duplicate' | 'likely-duplicate' | 'matched-receipt'
     match_transaction_id: int | None = None
 
 
@@ -612,33 +612,55 @@ async def match_candidates(
 ) -> None:
     """Annotate candidates in-place with match_status / match_transaction_id.
 
-    Heuristics:
-    - duplicate: same account, exact amount, posted_at within the same day.
-    - matched-receipt: there's an existing transaction with a receipt that is
-      within ±2 days and the same absolute amount on the same account.
+    Checks in priority order:
+    1. quicken_id (FITID) exact match — definitive dedup for QFX imports.
+    2. Same account + amount + date + description — strong dedup for QIF.
+    3. Receipt match within ±2 days — links bank transactions to snapped receipts.
+    4. Same account + amount + date (no description match) — flagged as
+       'likely-duplicate' so the user can decide (could be two legit
+       transactions at different payees for the same amount).
     """
+    from datetime import timedelta
+
     for c in candidates:
         if c.account_id is None:
             continue
-        # Exact same-day duplicate
+
+        # 1. Exact quicken_id / FITID match
+        if c.quicken_id:
+            fitid_match = await session.execute(
+                select(Transaction).where(
+                    Transaction.account_id == c.account_id,
+                    Transaction.quicken_id == c.quicken_id,
+                ).limit(1)
+            )
+            existing = fitid_match.scalar_one_or_none()
+            if existing is not None:
+                c.match_status = "duplicate"
+                c.match_transaction_id = existing.id
+                continue
+
         same_day_start = c.posted_at.replace(hour=0, minute=0, second=0, microsecond=0)
         same_day_end = same_day_start.replace(hour=23, minute=59, second=59)
-        dup = await session.execute(
-            select(Transaction).where(
-                Transaction.account_id == c.account_id,
-                Transaction.amount_cents == c.amount_cents,
-                Transaction.posted_at >= same_day_start,
-                Transaction.posted_at <= same_day_end,
-            ).limit(1)
-        )
-        existing = dup.scalar_one_or_none()
-        if existing is not None:
-            c.match_status = "duplicate"
-            c.match_transaction_id = existing.id
-            continue
 
-        # Receipt match within ±2 days
-        from datetime import timedelta
+        # 2. Amount + date + description (strong match for QIF)
+        if c.description:
+            desc_match = await session.execute(
+                select(Transaction).where(
+                    Transaction.account_id == c.account_id,
+                    Transaction.amount_cents == c.amount_cents,
+                    Transaction.description == c.description,
+                    Transaction.posted_at >= same_day_start,
+                    Transaction.posted_at <= same_day_end,
+                ).limit(1)
+            )
+            existing = desc_match.scalar_one_or_none()
+            if existing is not None:
+                c.match_status = "duplicate"
+                c.match_transaction_id = existing.id
+                continue
+
+        # 3. Receipt match within ±2 days
         window_start = c.posted_at - timedelta(days=2)
         window_end = c.posted_at + timedelta(days=2)
         receipt_match = await session.execute(
@@ -654,6 +676,21 @@ async def match_candidates(
         if rmatch is not None:
             c.match_status = "matched-receipt"
             c.match_transaction_id = rmatch.id
+            continue
+
+        # 4. Amount + date only — weaker signal, let user decide
+        amount_date_match = await session.execute(
+            select(Transaction).where(
+                Transaction.account_id == c.account_id,
+                Transaction.amount_cents == c.amount_cents,
+                Transaction.posted_at >= same_day_start,
+                Transaction.posted_at <= same_day_end,
+            ).limit(1)
+        )
+        existing = amount_date_match.scalar_one_or_none()
+        if existing is not None:
+            c.match_status = "likely-duplicate"
+            c.match_transaction_id = existing.id
 
 
 # ──────────────────────────────────────────────────────────────────────────────

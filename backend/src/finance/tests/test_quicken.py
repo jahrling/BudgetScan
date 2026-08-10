@@ -145,13 +145,14 @@ async def test_qfx_currency_mismatch_skips_statement(client: AsyncClient):
 
 async def test_qfx_duplicate_detection(client: AsyncClient):
     acct = await _account(client, "Checking", quicken_id="DUP-1")
-    # Pre-existing transaction same day & amount
+    # Pre-existing transaction same day, amount, AND description → strong duplicate
     resp = await client.post(
         "/api/transactions",
         json={
             "account_id": acct["id"],
             "posted_at": "2026-05-15T08:00:00Z",
             "amount_cents": -5000,
+            "description": "Costco",
         },
     )
     assert resp.status_code == 201
@@ -173,6 +174,69 @@ async def test_qfx_duplicate_detection(client: AsyncClient):
     assert by_desc["Costco"]["match_status"] == "duplicate"
     assert by_desc["Costco"]["match_transaction_id"] == existing_id
     assert by_desc["Target"]["match_status"] == "new"
+
+
+async def test_likely_duplicate_vs_duplicate(client: AsyncClient):
+    """amount+date match with different description → likely-duplicate, not duplicate."""
+    acct = await _account(client, "Checking", quicken_id="LD-1")
+    await client.post(
+        "/api/transactions",
+        json={
+            "account_id": acct["id"],
+            "posted_at": "2026-06-01T12:00:00Z",
+            "amount_cents": -500,
+            "description": "Coffee Shop A",
+        },
+    )
+
+    qif = """\
+!Account
+NChecking
+TBank
+^
+!Type:Bank
+D06/01/2026
+T-5.00
+PCoffee Shop B
+LDining
+^
+"""
+    files = {"file": ("ld.qif", qif.encode(), "application/x-qif")}
+    resp = await client.post("/api/import/qif", files=files)
+    assert resp.status_code == 200
+    cands = resp.json()["candidates"]
+    assert len(cands) == 1
+    assert cands[0]["match_status"] == "likely-duplicate"
+
+
+async def test_fitid_dedup(client: AsyncClient):
+    """Re-importing the same FITID is a definitive duplicate regardless of description."""
+    acct = await _account(client, "Checking", quicken_id="FID-1")
+    # First import
+    qfx = """\
+<OFX><BANKMSGSRSV1><STMTTRNRS><STMTRS>
+<CURDEF>USD
+<BANKACCTFROM><ACCTID>FID-1</ACCTID></BANKACCTFROM>
+<BANKTRANLIST>
+<STMTTRN><DTPOSTED>20260515<TRNAMT>-50.00<FITID>UNIQUE123<NAME>Costco</STMTTRN>
+</BANKTRANLIST></STMTRS></STMTTRNRS></BANKMSGSRSV1></OFX>
+"""
+    files = {"file": ("f1.qfx", qfx.encode(), "application/x-ofx")}
+    resp = await client.post("/api/import/qfx", files=files)
+    parsed = resp.json()
+    # Confirm to persist it
+    confirm = await client.post("/api/import/confirm", json={
+        "candidates": parsed["candidates"],
+        "actions": [{"candidate_index": 0, "action": "create"}],
+        "create_missing_categories": False,
+    })
+    assert confirm.json()["errors"] == []
+
+    # Re-import same file — FITID should catch it
+    files = {"file": ("f2.qfx", qfx.encode(), "application/x-ofx")}
+    resp = await client.post("/api/import/qfx", files=files)
+    cands = resp.json()["candidates"]
+    assert cands[0]["match_status"] == "duplicate"
 
 
 # ── QIF round-trip: import → export → import → no diff ──

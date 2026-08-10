@@ -35,7 +35,7 @@ interface Candidate {
   quicken_id: string | null;
   currency: string | null;
   splits: SplitCandidate[];
-  match_status: "new" | "duplicate" | "matched-receipt";
+  match_status: "new" | "duplicate" | "likely-duplicate" | "matched-receipt";
   match_transaction_id: number | null;
 }
 
@@ -431,12 +431,14 @@ function CandidateReview({
                     className={`text-xs ${
                       c.match_status === "duplicate"
                         ? "text-amber-600"
-                        : c.match_status === "matched-receipt"
-                          ? "text-sky-600"
-                          : "text-emerald-600"
+                        : c.match_status === "likely-duplicate"
+                          ? "text-orange-500"
+                          : c.match_status === "matched-receipt"
+                            ? "text-sky-600"
+                            : "text-emerald-600"
                     }`}
                   >
-                    {c.match_status}
+                    {c.match_status === "likely-duplicate" ? "likely dup" : c.match_status}
                   </span>
                 </div>
               </div>
