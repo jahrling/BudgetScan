@@ -52,6 +52,9 @@ Running list of work to do. Items added as they surface.
 - [ ] **Tailscale Serve exposure for Health stack** — Health stack hardening and Tailscale Serve exposure is listed as "open / next" in ARCHITECTURE.md. Not blocked by finance work but on the list.
   *Surfaced: ARCHITECTURE.md §5*
 
+- [ ] **Move Docker data root to `/home`** — The root partition (`/dev/nvme0n1p1`, 92G) is nearly full, mostly from Docker images and build cache. `/home` has 1.6T free. Move Docker's data directory (default `/var/lib/docker`) to `/home/docker` or similar via `data-root` in `/etc/docker/daemon.json`.
+  *Surfaced: disk-full during first `docker compose up` (Aug 2026)*
+
 ## Fix
 
 - [ ] **UTC date shift on evening receipts** — Export uses `txn.posted_at.strftime('%m/%d/%Y')` which emits UTC. Receipts entered in the evening of a US timezone appear a day later in the QIF. Needs timezone-aware formatting or a date-only stored field.
