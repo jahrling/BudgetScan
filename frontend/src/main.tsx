@@ -6,6 +6,7 @@ import './index.css'
 import { useAuth } from './hooks/useAuth'
 import NavBar from './components/NavBar'
 import { InstallPrompt } from './components/InstallPrompt'
+import { GlobalDropZone } from './components/GlobalDropZone'
 import Home from './routes/Home'
 
 const Categories = lazy(() => import('./routes/Categories'))
@@ -51,7 +52,7 @@ function LoginGuard({ children }: { children: React.ReactNode }) {
 
 function App() {
   return (
-    <>
+    <GlobalDropZone>
       <NavBar />
       <Suspense fallback={<FullscreenSpinner />}>
         <Routes>
@@ -133,7 +134,7 @@ function App() {
         </Routes>
       </Suspense>
       <InstallPrompt />
-    </>
+    </GlobalDropZone>
   )
 }
 

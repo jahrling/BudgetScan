@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowDownToLine,
@@ -16,6 +16,7 @@ import { Input } from "../components/ui/input";
 import { apiFetch } from "../lib/api";
 import { useAccounts, useCreateAccount } from "../hooks/useAccounts";
 import { formatCents } from "../components/MoneyInput";
+import { usePendingFile } from "../components/GlobalDropZone";
 
 // --- Import types ---
 
@@ -100,15 +101,22 @@ export default function QuickenSync() {
 
 // --- Import section (extracted from Import.tsx) ---
 
+function formatFromName(name: string): "qfx" | "qif" {
+  return name.toLowerCase().endsWith(".qif") ? "qif" : "qfx";
+}
+
 function ImportSection() {
   const qc = useQueryClient();
   const { data: accounts = [] } = useAccounts();
   const createAccount = useCreateAccount();
+  const { pendingFile, consumeFile } = usePendingFile();
 
-  const [format, setFormat] = useState<"qfx" | "qif">("qfx");
   const [parsed, setParsed] = useState<ParseResult | null>(null);
   const [actions, setActions] = useState<RowAction[]>([]);
   const [createMissing, setCreateMissing] = useState(true);
+  const [localDragging, setLocalDragging] = useState(false);
+  const [fileName, setFileName] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [confirmResult, setConfirmResult] = useState<{
     created_ids: number[];
     merged_ids: number[];
@@ -118,6 +126,7 @@ function ImportSection() {
 
   const uploadMut = useMutation({
     mutationFn: async (file: File) => {
+      const format = formatFromName(file.name);
       const form = new FormData();
       form.append("file", file);
       const res = await fetch(`/api/import/${format}`, {
@@ -134,6 +143,21 @@ function ImportSection() {
       setConfirmResult(null);
     },
   });
+
+  const handleFile = useCallback(
+    (file: File) => {
+      setFileName(file.name);
+      uploadMut.mutate(file);
+    },
+    [uploadMut],
+  );
+
+  useEffect(() => {
+    if (pendingFile) {
+      const file = consumeFile();
+      if (file) handleFile(file);
+    }
+  }, [pendingFile, consumeFile, handleFile]);
 
   const confirmMut = useMutation({
     mutationFn: async () => {
@@ -164,7 +188,7 @@ function ImportSection() {
 
   function onPick(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
-    if (f) uploadMut.mutate(f);
+    if (f) handleFile(f);
     e.target.value = "";
   }
 
@@ -198,34 +222,53 @@ function ImportSection() {
     <div>
       <p className="text-sm text-gray-600 mb-3">
         In Quicken: <strong>File → File Export → QFX</strong> (or QIF), then
-        upload the file here.
+        drag-and-drop the file here — or click to browse.
       </p>
 
-      <div className="flex items-center gap-3 mb-4">
-        <Label>Format</Label>
-        <Select
-          value={format}
-          onChange={(e) => setFormat(e.target.value as "qfx" | "qif")}
-          className="w-24"
-        >
-          <option value="qfx">QFX</option>
-          <option value="qif">QIF</option>
-        </Select>
-      </div>
-
-      <label className="flex items-center gap-2 rounded-lg border-2 border-dashed border-gray-300 bg-white p-4 cursor-pointer hover:border-sky-400 transition-colors">
-        <Upload className="h-5 w-5 text-gray-400 shrink-0" />
-        <span className="text-sm text-gray-600">
-          {uploadMut.isPending ? "Parsing…" : "Choose QFX or QIF file"}
-        </span>
+      <div
+        onClick={() => fileInputRef.current?.click()}
+        onDrop={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setLocalDragging(false);
+          const f = e.dataTransfer.files[0];
+          if (f) handleFile(f);
+        }}
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setLocalDragging(true);
+        }}
+        onDragLeave={(e) => {
+          if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+          setLocalDragging(false);
+        }}
+        className={`mb-4 flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-6 text-center cursor-pointer transition-colors ${
+          localDragging
+            ? "border-sky-400 bg-sky-50"
+            : "border-gray-300 hover:border-sky-400"
+        }`}
+      >
         <input
+          ref={fileInputRef}
           type="file"
-          accept=".qfx,.ofx,.qif,application/x-ofx,application/x-qif"
+          accept=".qfx,.ofx,.qif"
           onChange={onPick}
           className="hidden"
           disabled={uploadMut.isPending}
         />
-      </label>
+        <Upload className={`h-8 w-8 mb-2 ${localDragging ? "text-sky-400" : "text-gray-400"}`} />
+        {uploadMut.isPending ? (
+          <p className="text-sm text-gray-500">Parsing{fileName ? ` ${fileName}` : ""}…</p>
+        ) : (
+          <>
+            <p className="text-sm font-medium">
+              {localDragging ? "Drop file here" : "Drag & drop a QFX or QIF file"}
+            </p>
+            <p className="mt-1 text-xs text-gray-500">or click to browse</p>
+          </>
+        )}
+      </div>
 
       {uploadMut.isError && (
         <p className="text-red-600 text-sm mt-2">
