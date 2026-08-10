@@ -52,7 +52,7 @@ Running list of work to do. Items added as they surface.
 - [ ] **Tailscale Serve exposure for Health stack** — Health stack hardening and Tailscale Serve exposure is listed as "open / next" in ARCHITECTURE.md. Not blocked by finance work but on the list.
   *Surfaced: ARCHITECTURE.md §5*
 
-- [ ] **Move Docker data root to `/home`** — The root partition (`/dev/nvme0n1p1`, 92G) is nearly full, mostly from Docker images and build cache. `/home` has 1.6T free. Move Docker's data directory (default `/var/lib/docker`) to `/home/docker` or similar via `data-root` in `/etc/docker/daemon.json`.
+- [x] **Move Docker data root to `/home`** — The root partition (`/dev/nvme0n1p1`, 92G) is nearly full, mostly from Docker images and build cache. `/home` has 1.6T free. Moved Docker to `/home/docker` via `/etc/docker/daemon.json` and containerd to `/home/containerd` via `/etc/containerd/config.toml`.
   *Surfaced: disk-full during first `docker compose up` (Aug 2026)*
 
 ## Fix
