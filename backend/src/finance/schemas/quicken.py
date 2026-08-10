@@ -18,14 +18,34 @@ class TransactionCandidateSchema(BaseModel):
     quicken_id: str | None
     currency: str | None = None
     splits: list[SplitCandidateSchema] = Field(default_factory=list)
+    cleared: str | None = None
+    transfer_account: str | None = None
     match_status: str = "new"
     match_transaction_id: int | None = None
+
+
+class CategoryDefinitionSchema(BaseModel):
+    name: str
+    description: str | None = None
+    is_income: bool = False
+    tax_related: bool = False
+    tax_schedule: str | None = None
+
+
+class MemorizedRuleSchema(BaseModel):
+    payee: str
+    category_path: str
+    amount_cents: int | None = None
+    transfer_account: str | None = None
+    kind: str = "payment"
 
 
 class ParseResultSchema(BaseModel):
     candidates: list[TransactionCandidateSchema]
     unmapped_accounts: list[str]
     errors: list[str]
+    categories: list[CategoryDefinitionSchema] = Field(default_factory=list)
+    memorized_rules: list[MemorizedRuleSchema] = Field(default_factory=list)
 
 
 class ConfirmAction(BaseModel):

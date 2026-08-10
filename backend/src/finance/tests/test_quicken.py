@@ -65,6 +65,15 @@ def test_amount_to_cents_roundtrip():
     assert _cents_to_amount(0) == "0.00"
 
 
+def test_parse_transfer():
+    from finance.services.quicken import _parse_transfer
+
+    assert _parse_transfer("[Savings Account]") == ("Savings Account", "")
+    assert _parse_transfer("Food:Groceries") == (None, "Food:Groceries")
+    assert _parse_transfer("  [My IRA]  ") == ("My IRA", "")
+    assert _parse_transfer("") == (None, "")
+
+
 # ── QFX multi-account import ──
 
 
@@ -251,6 +260,218 @@ async def test_qif_roundtrip_preserves_splits(client: AsyncClient):
     a = sorted(normalize(c) for c in parsed["candidates"])
     b = sorted(normalize(c) for c in second["candidates"])
     assert a == b
+
+
+# ── QIF !Type:Cat parsing ──
+
+
+QIF_WITH_CATEGORIES = """\
+!Type:Cat
+NFood & Dining
+DRestaurants and groceries
+E
+^
+NFood & Dining:Groceries
+E
+^
+NIncome:Salary
+I
+T
+RR286
+^
+NMisc
+E
+^
+"""
+
+
+async def test_qif_parses_category_definitions(client: AsyncClient):
+    files = {"file": ("cats.qif", QIF_WITH_CATEGORIES.encode(), "application/x-qif")}
+    resp = await client.post("/api/import/qif", files=files)
+    assert resp.status_code == 200
+    data = resp.json()
+
+    cats = data["categories"]
+    assert len(cats) == 4
+
+    by_name = {c["name"]: c for c in cats}
+
+    food = by_name["Food & Dining"]
+    assert food["description"] == "Restaurants and groceries"
+    assert food["is_income"] is False
+    assert food["tax_related"] is False
+
+    groceries = by_name["Food & Dining:Groceries"]
+    assert groceries["is_income"] is False
+
+    salary = by_name["Income:Salary"]
+    assert salary["is_income"] is True
+    assert salary["tax_related"] is True
+    assert salary["tax_schedule"] == "R286"
+
+    assert by_name["Misc"]["description"] is None
+    assert data["candidates"] == []
+
+
+# ── QIF !Type:Memorized parsing ──
+
+
+QIF_WITH_MEMORIZED = """\
+!Type:Memorized
+KP
+PCostco
+LFood:Groceries
+T-150.00
+^
+KD
+PEmployer Inc
+LIncome:Salary
+T3500.00
+^
+KT
+PTransfer to Savings
+L[Savings Account]
+T-500.00
+^
+KP
+PNetflix
+LEntertainment:Streaming
+^
+"""
+
+
+async def test_qif_parses_memorized_rules(client: AsyncClient):
+    files = {"file": ("mem.qif", QIF_WITH_MEMORIZED.encode(), "application/x-qif")}
+    resp = await client.post("/api/import/qif", files=files)
+    assert resp.status_code == 200
+    data = resp.json()
+
+    rules = data["memorized_rules"]
+    assert len(rules) == 4
+
+    costco = rules[0]
+    assert costco["payee"] == "Costco"
+    assert costco["category_path"] == "Food:Groceries"
+    assert costco["amount_cents"] == -15000
+    assert costco["kind"] == "payment"
+    assert costco["transfer_account"] is None
+
+    employer = rules[1]
+    assert employer["payee"] == "Employer Inc"
+    assert employer["kind"] == "deposit"
+    assert employer["amount_cents"] == 350000
+
+    transfer = rules[2]
+    assert transfer["payee"] == "Transfer to Savings"
+    assert transfer["transfer_account"] == "Savings Account"
+    assert transfer["category_path"] == ""
+    assert transfer["kind"] == "transfer"
+
+    netflix = rules[3]
+    assert netflix["payee"] == "Netflix"
+    assert netflix["amount_cents"] is None
+
+
+# ── Transfer notation and cleared status ──
+
+
+QIF_WITH_TRANSFERS = """\
+!Account
+NMain Checking
+TBank
+^
+!Type:Bank
+D05/19/2026
+T-500.00
+PTransfer to Savings
+L[Savings Account]
+CX
+^
+D05/20/2026
+T-12.34
+PStarbucks
+LDining
+C*
+^
+D05/21/2026
+T-25.00
+PGas Station
+LTransportation:Fuel
+^
+"""
+
+
+async def test_qif_transfer_notation_and_cleared(client: AsyncClient):
+    await _account(client, "Main Checking", quicken_id="Main Checking")
+    files = {"file": ("xfer.qif", QIF_WITH_TRANSFERS.encode(), "application/x-qif")}
+    resp = await client.post("/api/import/qif", files=files)
+    assert resp.status_code == 200
+    data = resp.json()
+
+    cands = data["candidates"]
+    assert len(cands) == 3
+
+    xfer = cands[0]
+    assert xfer["transfer_account"] == "Savings Account"
+    assert xfer["cleared"] == "X"
+    assert xfer["splits"] == []
+
+    starbucks = cands[1]
+    assert starbucks["transfer_account"] is None
+    assert starbucks["cleared"] == "*"
+    assert starbucks["splits"][0]["category_path"] == "Dining"
+
+    gas = cands[2]
+    assert gas["transfer_account"] is None
+    assert gas["cleared"] is None
+    assert gas["splits"][0]["category_path"] == "Transportation:Fuel"
+
+
+# ── Mixed QIF with all section types ──
+
+
+QIF_MIXED = """\
+!Option:AutoSwitch
+!Type:Cat
+NFood
+E
+^
+!Account
+NChecking
+TBank
+^
+!Type:Bank
+D06/01/2026
+T-10.00
+PLunch
+LFood
+^
+!Type:Memorized
+KP
+PLunch Spot
+LFood
+T-10.00
+^
+!Type:Security
+NGoogle
+SGOOG
+^
+"""
+
+
+async def test_qif_mixed_sections(client: AsyncClient):
+    await _account(client, "Checking", quicken_id="Checking")
+    files = {"file": ("mix.qif", QIF_MIXED.encode(), "application/x-qif")}
+    resp = await client.post("/api/import/qif", files=files)
+    assert resp.status_code == 200
+    data = resp.json()
+
+    assert len(data["categories"]) == 1
+    assert data["categories"][0]["name"] == "Food"
+    assert len(data["candidates"]) == 1
+    assert data["candidates"][0]["description"] == "Lunch"
+    assert len(data["memorized_rules"]) == 1
+    assert data["memorized_rules"][0]["payee"] == "Lunch Spot"
 
 
 # ── Confirm: skip / create / errors are per-row ──

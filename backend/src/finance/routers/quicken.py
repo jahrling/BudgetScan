@@ -10,8 +10,10 @@ from finance.auth.dependencies import current_user
 from finance.db import get_session
 from finance.models.account import Account
 from finance.schemas.quicken import (
+    CategoryDefinitionSchema,
     ConfirmRequest,
     ConfirmResponse,
+    MemorizedRuleSchema,
     ParseResultSchema,
     SplitCandidateSchema,
     TransactionCandidateSchema,
@@ -50,6 +52,8 @@ def _to_schema(result: svc.ParseResult) -> ParseResultSchema:
                     )
                     for s in c.splits
                 ],
+                cleared=c.cleared,
+                transfer_account=c.transfer_account,
                 match_status=c.match_status,
                 match_transaction_id=c.match_transaction_id,
             )
@@ -57,6 +61,26 @@ def _to_schema(result: svc.ParseResult) -> ParseResultSchema:
         ],
         unmapped_accounts=result.unmapped_accounts,
         errors=result.errors,
+        categories=[
+            CategoryDefinitionSchema(
+                name=cat.name,
+                description=cat.description,
+                is_income=cat.is_income,
+                tax_related=cat.tax_related,
+                tax_schedule=cat.tax_schedule,
+            )
+            for cat in result.categories
+        ],
+        memorized_rules=[
+            MemorizedRuleSchema(
+                payee=r.payee,
+                category_path=r.category_path,
+                amount_cents=r.amount_cents,
+                transfer_account=r.transfer_account,
+                kind=r.kind,
+            )
+            for r in result.memorized_rules
+        ],
     )
 
 

@@ -66,6 +66,8 @@ class TransactionCandidate:
     quicken_id: str | None  # FITID / QIF "N" tag if present
     currency: str | None = None
     splits: list["SplitCandidate"] = field(default_factory=list)
+    cleared: str | None = None  # None | '*' (cleared) | 'X' (reconciled)
+    transfer_account: str | None = None  # populated when L=[Account Name]
     # Populated by match_candidates():
     match_status: str = "new"  # 'new' | 'duplicate' | 'matched-receipt'
     match_transaction_id: int | None = None
@@ -79,10 +81,34 @@ class SplitCandidate:
 
 
 @dataclass
+class CategoryDefinition:
+    """A category parsed from a QIF !Type:Cat block."""
+
+    name: str  # full colon-joined path, e.g. "Food & Dining:Groceries"
+    description: str | None = None
+    is_income: bool = False
+    tax_related: bool = False
+    tax_schedule: str | None = None  # e.g. "R286"
+
+
+@dataclass
+class MemorizedRule:
+    """A memorized payee-to-category mapping from QIF !Type:Memorized."""
+
+    payee: str
+    category_path: str  # full colon-joined path
+    amount_cents: int | None = None
+    transfer_account: str | None = None  # when category is [Account Name]
+    kind: str = "payment"  # 'payment' | 'deposit' | 'check' | 'transfer'
+
+
+@dataclass
 class ParseResult:
     candidates: list[TransactionCandidate] = field(default_factory=list)
     unmapped_accounts: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
+    categories: list[CategoryDefinition] = field(default_factory=list)
+    memorized_rules: list[MemorizedRule] = field(default_factory=list)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -290,38 +316,34 @@ def _flush_qfx_txn(
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-async def import_qif(file_bytes: bytes, session: AsyncSession) -> ParseResult:
-    """Parse a QIF document.
+def _parse_transfer(value: str) -> tuple[str | None, str]:
+    """Extract transfer account from QIF L field.
 
-    QIF supports interleaved blocks like::
-
-        !Account
-        NChecking
-        TBank
-        ^
-        !Type:Bank
-        D05/19/2026
-        T-50.00
-        PCostco
-        SFood:Groceries
-        $-30.00
-        SHousehold
-        $-20.00
-        ^
+    ``[Account Name]`` → (transfer_account="Account Name", category="")
+    ``Food:Groceries`` → (None, "Food:Groceries")
     """
+    stripped = value.strip()
+    if stripped.startswith("[") and stripped.endswith("]"):
+        return stripped[1:-1], ""
+    return None, stripped
+
+
+_MEMORIZED_KIND = {"P": "payment", "D": "deposit", "C": "check", "T": "transfer"}
+
+
+async def import_qif(file_bytes: bytes, session: AsyncSession) -> ParseResult:
+    """Parse a QIF document including category definitions and memorized rules."""
     result = ParseResult()
     text = file_bytes.decode("utf-8", errors="replace")
 
     accounts_by_name = await _account_map_by_quicken_id(session)
-    # QIF account blocks may name the bank by display name, not quicken_id.
-    # Also map by Account.name so a user can drop a QIF without re-tagging.
     name_map = await session.execute(select(Account))
     by_name = {a.name: a for a in name_map.scalars().all()}
 
     current_account: Account | None = None
     current_account_key: str = ""
-    in_account_block = False
-    section_kind: str | None = None  # 'account' | 'txn'
+    # section_kind: 'account' | 'txn' | 'cat' | 'memorized' | 'security' | 'tag' | None
+    section_kind: str | None = None
     record: dict[str, object] = {}
 
     def reset_record() -> None:
@@ -337,14 +359,22 @@ async def import_qif(file_bytes: bytes, session: AsyncSession) -> ParseResult:
 
         if line.startswith("!"):
             header = line[1:].strip()
-            if header.lower().startswith("account"):
-                in_account_block = True
+            hl = header.lower()
+            if hl.startswith("account"):
                 section_kind = "account"
-                reset_record()
+            elif hl.startswith("type:cat"):
+                section_kind = "cat"
+            elif hl.startswith("type:memorized"):
+                section_kind = "memorized"
+            elif hl.startswith("type:security"):
+                section_kind = "security"
+            elif hl.startswith("type:tag"):
+                section_kind = "tag"
+            elif hl in ("option:autoswitch", "clear:autoswitch"):
+                continue
             else:
-                in_account_block = False
                 section_kind = "txn"
-                reset_record()
+            reset_record()
             continue
 
         if line == "^":
@@ -361,6 +391,10 @@ async def import_qif(file_bytes: bytes, session: AsyncSession) -> ParseResult:
                 _flush_qif_txn(
                     record, current_account_key, current_account, result
                 )
+            elif section_kind == "cat":
+                _flush_qif_cat(record, result)
+            elif section_kind == "memorized":
+                _flush_qif_memorized(record, result)
             reset_record()
             continue
 
@@ -372,6 +406,37 @@ async def import_qif(file_bytes: bytes, session: AsyncSession) -> ParseResult:
                 record["name"] = value
             elif code == "T":
                 record["type"] = value
+            continue
+
+        if section_kind == "cat":
+            if code == "N":
+                record["name"] = value
+            elif code == "D":
+                record["description"] = value
+            elif code == "I":
+                record["is_income"] = True
+            elif code == "E":
+                record["is_expense"] = True
+            elif code == "T":
+                record["tax_related"] = True
+            elif code == "R":
+                record["tax_schedule"] = value
+            continue
+
+        if section_kind == "memorized":
+            if code == "K":
+                record["kind"] = value
+            elif code == "P":
+                record["payee"] = value
+            elif code == "L":
+                record["category"] = value
+            elif code == "T" or code == "U":
+                record["amount"] = value
+            elif code == "C":
+                record["cleared"] = value
+            continue
+
+        if section_kind in ("security", "tag"):
             continue
 
         # txn block
@@ -386,8 +451,9 @@ async def import_qif(file_bytes: bytes, session: AsyncSession) -> ParseResult:
         elif code == "L":
             record["category"] = value
         elif code == "N":
-            # In a txn block, N is the check number / reference id
             record["ref"] = value
+        elif code == "C":
+            record["cleared"] = value
         elif code == "S":
             record["splits"].append({"category": value, "amount": None, "memo": None})  # type: ignore[union-attr]
         elif code == "E":
@@ -400,6 +466,52 @@ async def import_qif(file_bytes: bytes, session: AsyncSession) -> ParseResult:
                 splits[-1]["amount"] = value  # type: ignore[index]
 
     return result
+
+
+def _flush_qif_cat(
+    record: dict[str, object],
+    result: ParseResult,
+) -> None:
+    name = str(record.get("name", "")).strip()
+    if not name:
+        return
+    result.categories.append(
+        CategoryDefinition(
+            name=name,
+            description=str(record["description"]) if record.get("description") else None,
+            is_income=bool(record.get("is_income")),
+            tax_related=bool(record.get("tax_related")),
+            tax_schedule=str(record["tax_schedule"]) if record.get("tax_schedule") else None,
+        )
+    )
+
+
+def _flush_qif_memorized(
+    record: dict[str, object],
+    result: ParseResult,
+) -> None:
+    payee = str(record.get("payee", "")).strip()
+    cat_raw = str(record.get("category", "")).strip()
+    if not payee and not cat_raw:
+        return
+    transfer_account, category_path = _parse_transfer(cat_raw) if cat_raw else (None, "")
+    kind_code = str(record.get("kind", "P")).strip()
+    kind = _MEMORIZED_KIND.get(kind_code, "payment")
+    amount_cents: int | None = None
+    if record.get("amount"):
+        try:
+            amount_cents = _amount_to_cents(str(record["amount"]))
+        except ValueError:
+            pass
+    result.memorized_rules.append(
+        MemorizedRule(
+            payee=payee,
+            category_path=category_path,
+            amount_cents=amount_cents,
+            transfer_account=transfer_account,
+            kind=kind,
+        )
+    )
 
 
 def _flush_qif_txn(
@@ -418,6 +530,13 @@ def _flush_qif_txn(
         return
 
     description = record.get("payee") or record.get("memo")
+    cleared = str(record["cleared"]) if record.get("cleared") else None
+    transfer_account: str | None = None
+
+    cat_raw = str(record.get("category", "")).strip() if record.get("category") else ""
+    if cat_raw:
+        transfer_account, cat_raw = _parse_transfer(cat_raw)
+
     splits_raw = record.get("splits") or []
     splits: list[SplitCandidate] = []
     if isinstance(splits_raw, list) and splits_raw:
@@ -433,17 +552,19 @@ def _flush_qif_txn(
                 continue
             if amt is None:
                 continue
+            s_cat = str(s.get("category") or "")
+            _, s_cat_path = _parse_transfer(s_cat) if s_cat else (None, "")
             splits.append(
                 SplitCandidate(
-                    category_path=str(s.get("category") or ""),
+                    category_path=s_cat_path,
                     amount_cents=amt,
                     description=str(s["memo"]) if s.get("memo") else None,
                 )
             )
-    elif record.get("category"):
+    elif cat_raw:
         splits.append(
             SplitCandidate(
-                category_path=str(record["category"]),
+                category_path=cat_raw,
                 amount_cents=amount_cents,
                 description=str(description) if description else None,
             )
@@ -458,6 +579,8 @@ def _flush_qif_txn(
             description=str(description) if description else None,
             quicken_id=str(record["ref"]) if record.get("ref") else None,
             splits=splits,
+            cleared=cleared,
+            transfer_account=transfer_account,
         )
     )
 
