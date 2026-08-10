@@ -71,16 +71,21 @@ Running list of work to do. Items added as they surface.
 - [ ] **Receipt holding pool with transaction suggestions** — Scanned receipts need a staging area that surfaces candidate transaction matches. Match first by date + amount, then by merchant name. UI should show the receipt alongside the top suggestions and let the user confirm, reject, or manually link.
   *Surfaced: planning session Aug 2026*
 
-- [ ] **Transaction tagging / categorization from receipts** — Before budgeting can work, transactions need categories. Receipts already carry merchant and line-item data from OCR — use that to suggest or auto-assign categories. This is a prerequisite for budget suggestions.
+- [ ] **Transaction tagging / categorization from receipts** — Before budgeting can work, transactions need categories. Receipts already carry merchant and line-item data from OCR — use that to suggest or auto-assign categories.
   *Surfaced: planning session Aug 2026*
 
 - [ ] **Split transactions from receipt line items** — Receipts with multiple line items (e.g. Costco run with groceries + household) should be able to generate split transactions. The split editor exists but isn't wired to receipt OCR data yet.
   *Surfaced: planning session Aug 2026*
 
+## LLM-Powered Categorization
+
+- [ ] **Auto-categorize transactions via local LLM + Quicken knowledge base** — The 149 imported Quicken categories and 391 memorized payee→category rules are a ready-made training set. The local Qwen model could use these as few-shot context to guess categories for new/untagged transactions. Challenges: (1) bank transaction descriptions are often cryptic abbreviations (e.g. "SQ *JOES COFF" = Square / Joe's Coffee), (2) the LLM may need web lookup to resolve merchant names, but that lives in the harness not the model, (3) need to figure out prompt engineering, context window management for 391 rules, and confidence thresholds for auto-assign vs. suggest. See Fable design doc for proposed architecture.
+  *Surfaced: planning session Aug 2026*
+
 ## Budget
 
-- [ ] **Budget suggestion engine** — Once transactions are tagged with categories, suggest monthly budget amounts based on historical spending patterns. Depends on having enough categorized transaction history (from QIF memorized rules + receipt tagging).
-  *Surfaced: planning session Aug 2026. Blocked by: transaction tagging*
+- [ ] **Budget suggestion engine** — Once transactions are tagged with categories, suggest monthly budget amounts based on historical spending patterns. The imported Quicken categories and memorized rules provide a strong starting point — most historical transactions already have categories via the memorized rules. New/unmatched transactions get categorized by the LLM pipeline above.
+  *Surfaced: planning session Aug 2026. Depends on: LLM categorization pipeline*
 
 ## Ship
 
