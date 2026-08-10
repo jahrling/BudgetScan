@@ -79,7 +79,7 @@ Running list of work to do. Items added as they surface.
 
 ## LLM-Powered Categorization
 
-- [ ] **Auto-categorize transactions via local LLM + Quicken knowledge base** — The 149 imported Quicken categories and 391 memorized payee→category rules are a ready-made training set. The local Qwen model could use these as few-shot context to guess categories for new/untagged transactions. Challenges: (1) bank transaction descriptions are often cryptic abbreviations (e.g. "SQ *JOES COFF" = Square / Joe's Coffee), (2) the LLM may need web lookup to resolve merchant names, but that lives in the harness not the model, (3) need to figure out prompt engineering, context window management for 391 rules, and confidence thresholds for auto-assign vs. suggest. See Fable design doc for proposed architecture.
+- [ ] **Auto-categorize transactions via local LLM + Quicken knowledge base** — The 149 imported Quicken categories and 391 memorized payee→category rules are a ready-made training set. The local Qwen model could use these as few-shot context to guess categories for new/untagged transactions. Challenges: (1) bank transaction descriptions are often cryptic abbreviations (e.g. "SQ *JOES COFF" = Square / Joe's Coffee), (2) the LLM may need web lookup to resolve merchant names, but that lives in the harness not the model, (3) need to figure out prompt engineering, context window management for 391 rules, and confidence thresholds for auto-assign vs. suggest. See `docs/DESIGN_LLM_CATEGORIZATION.md` for the proposed architecture.
   *Surfaced: planning session Aug 2026*
 
 ## Budget
