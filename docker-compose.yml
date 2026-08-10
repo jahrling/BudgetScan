@@ -5,10 +5,13 @@ services:
     expose:
       - "8000"
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     volumes:
       - db-data:/app/data
       - receipts:/app/data/receipts
+      - ./docs:/app/docs:ro
+    environment:
+      - DOCS_DIR=/app/docs
     env_file: .env
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health', timeout=2)"]
@@ -20,8 +23,8 @@ services:
   frontend:
     build: ./frontend
     profiles: ["", "dev", "prod"]
-    expose:
-      - "80"
+    ports:
+      - "127.0.0.1:8080:80"
     depends_on:
       - backend
     healthcheck:
@@ -35,7 +38,7 @@ services:
     image: ollama/ollama:latest
     profiles: ["", "dev", "prod"]
     ports:
-      - "11434:11434"
+      - "127.0.0.1:11434:11434"
     volumes:
       - ollama-models:/root/.ollama
     healthcheck:

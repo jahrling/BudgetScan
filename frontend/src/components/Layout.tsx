@@ -1,7 +1,7 @@
 import { type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "../lib/utils";
-import { Home, Tags, Wallet, Receipt, ArrowLeftRight } from "lucide-react";
+import { Home, Tags, Wallet, Receipt, ArrowLeftRight, FileText } from "lucide-react";
 
 const navItems = [
   { to: "/", label: "Home", icon: Home },
@@ -9,6 +9,7 @@ const navItems = [
   { to: "/categories", label: "Categories", icon: Tags },
   { to: "/budgets", label: "Budgets", icon: Wallet },
   { to: "/sync", label: "Sync", icon: ArrowLeftRight },
+  { to: "/docs", label: "Docs", icon: FileText },
 ] as const;
 
 export function Layout({ children }: { children: ReactNode }) {

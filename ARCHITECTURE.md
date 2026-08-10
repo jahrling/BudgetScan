@@ -1,6 +1,6 @@
 # TheRig — System Architecture
 
-**Status:** Current as of 2026-07-18
+**Status:** Current as of 2026-08-09
 **Owner:** jahrling
 **Scope:** Local-first AI workstation hosting per-domain stacks (Finance, Health, and future domains), reachable remotely over Tailscale.
 
@@ -78,6 +78,13 @@ graph TD
 ## 4. Standing constraints
 
 - **Binding:** services bind to `127.0.0.1`. Docker ports published as `-p 127.0.0.1:PORT:...` (Docker bypasses UFW — publishing to `0.0.0.0` is the #1 leak risk). Tailscale reaches them via Serve, not by rebinding.
+- **Tailscale Serve port map** (tailnet-only, not Funnel):
+  | External | Proxies to | Service |
+  |----------|-----------|---------|
+  | `https://therig.tailab0bb6.ts.net` (443) | `http://127.0.0.1:3000` | Code Vault webapp |
+  | `https://therig.tailab0bb6.ts.net:8443` | `http://127.0.0.1:8300` | Code Vault webapp (alt) |
+  | `https://therig.tailab0bb6.ts.net:8444` | `http://127.0.0.1:8080` | BudgetScan frontend |
+  When BudgetScan runs via Docker Compose, the frontend container (nginx) listens on host port 8080 and proxies `/api/*` to the backend on port 8000. Tailscale Serve on port 8444 exposes this to the tailnet.
 - **Secrets & data:** QFX/QIF exports, the SQLite DB, receipts, the vector index, and `.env` are gitignored and must never enter git history (BudgetScan is a public repo).
 - **GPU:** VRAM (16GB) is the binding constraint. Keep retrieved context tight; verify `size_vram > 0` after model loads (Blackwell CPU-fallback quirk).
 

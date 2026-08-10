@@ -14,6 +14,7 @@ const Transactions = lazy(() => import('./routes/Transactions'))
 const ReceiptProcessing = lazy(() => import('./routes/ReceiptProcessing'))
 const ReceiptReview = lazy(() => import('./routes/ReceiptReview'))
 const Login = lazy(() => import('./routes/Login'))
+const Docs = lazy(() => import('./routes/Docs'))
 const QuickenSync = lazy(() => import('./routes/QuickenSync'))
 
 const queryClient = new QueryClient({
@@ -115,6 +116,14 @@ function App() {
             element={
               <AuthGuard>
                 <QuickenSync />
+              </AuthGuard>
+            }
+          />
+          <Route
+            path="/docs"
+            element={
+              <AuthGuard>
+                <Docs />
               </AuthGuard>
             }
           />
