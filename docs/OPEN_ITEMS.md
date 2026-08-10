@@ -60,11 +60,27 @@ Running list of work to do. Items added as they surface.
 - [ ] **UTC date shift on evening receipts** — Export uses `txn.posted_at.strftime('%m/%d/%Y')` which emits UTC. Receipts entered in the evening of a US timezone appear a day later in the QIF. Needs timezone-aware formatting or a date-only stored field.
   *Surfaced: ASSUMPTIONS.md — Quicken interop*
 
-- [ ] **Two same-amount same-day purchases collapse** — Duplicate detection uses account + amount + same calendar day. Two legitimate same-day purchases for the same amount (two coffees) will both be marked `duplicate`. User has to manually override to "Create" — but the second one always matches the first, not the already-existing transaction.
-  *Surfaced: ASSUMPTIONS.md — Quicken interop*
+- [x] **Two same-amount same-day purchases collapse** — ~~Duplicate detection uses account + amount + same calendar day.~~ Fixed: dedup now checks FITID, then amount+date+description (strong match), then amount+date only (flagged as `likely-duplicate` in orange so user decides). Two coffees at different places no longer auto-skip.
+  *Surfaced: ASSUMPTIONS.md — Quicken interop. Fixed: Aug 2026*
 
 - [ ] **Caddy admin API bound to `0.0.0.0:2019`** — Needed for iPhone cert download, but must be locked down if Caddy is ever exposed beyond LAN. Either bind to `127.0.0.1:2019` and document a manual cert-copy step, or gate on Tailscale-only access.
   *Surfaced: LEARNINGS.md — Phase 9*
+
+## Receipt → Transaction Reconciliation
+
+- [ ] **Receipt holding pool with transaction suggestions** — Scanned receipts need a staging area that surfaces candidate transaction matches. Match first by date + amount, then by merchant name. UI should show the receipt alongside the top suggestions and let the user confirm, reject, or manually link.
+  *Surfaced: planning session Aug 2026*
+
+- [ ] **Transaction tagging / categorization from receipts** — Before budgeting can work, transactions need categories. Receipts already carry merchant and line-item data from OCR — use that to suggest or auto-assign categories. This is a prerequisite for budget suggestions.
+  *Surfaced: planning session Aug 2026*
+
+- [ ] **Split transactions from receipt line items** — Receipts with multiple line items (e.g. Costco run with groceries + household) should be able to generate split transactions. The split editor exists but isn't wired to receipt OCR data yet.
+  *Surfaced: planning session Aug 2026*
+
+## Budget
+
+- [ ] **Budget suggestion engine** — Once transactions are tagged with categories, suggest monthly budget amounts based on historical spending patterns. Depends on having enough categorized transaction history (from QIF memorized rules + receipt tagging).
+  *Surfaced: planning session Aug 2026. Blocked by: transaction tagging*
 
 ## Ship
 
