@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useBlocker } from "react-router-dom";
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
@@ -60,21 +59,6 @@ function defaultActionFor(c: Candidate): RowAction {
 export default function QuickenSync() {
   const [activeTab, setActiveTab] = useState<"import" | "export">("import");
   const [hasUnapplied, setHasUnapplied] = useState(false);
-
-  const blocker = useBlocker(hasUnapplied);
-
-  useEffect(() => {
-    if (blocker.state === "blocked") {
-      const leave = window.confirm(
-        "You have an import in progress that hasn't been applied. Leave anyway?"
-      );
-      if (leave) {
-        blocker.proceed();
-      } else {
-        blocker.reset();
-      }
-    }
-  }, [blocker.state]);
 
   useEffect(() => {
     if (!hasUnapplied) return;
