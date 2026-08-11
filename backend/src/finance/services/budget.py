@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 
 from fastapi import HTTPException
 from sqlalchemy import func, select
@@ -132,3 +132,49 @@ async def get_budget_status(
         )
 
     return results
+
+
+async def get_spending_suggestions(
+    session: AsyncSession, months: int = 3
+) -> list[dict]:
+    today = date.today()
+    start = (today.replace(day=1) - timedelta(days=1)).replace(day=1)
+    for _ in range(months - 1):
+        start = (start - timedelta(days=1)).replace(day=1)
+    end = today.replace(day=1) - timedelta(days=1)
+
+    result = await session.execute(
+        select(
+            LineItem.category_id,
+            func.coalesce(func.sum(LineItem.amount_cents), 0).label("total"),
+            func.count(LineItem.id).label("txn_count"),
+        )
+        .join(Transaction, LineItem.transaction_id == Transaction.id)
+        .where(
+            Transaction.posted_at >= start,
+            Transaction.posted_at <= end,
+        )
+        .group_by(LineItem.category_id)
+    )
+
+    suggestions = []
+    for row in result:
+        cat = await session.get(Category, row.category_id)
+        if cat is None:
+            continue
+        avg = row.total // months
+        rounded = ((avg + 499) // 500) * 500
+        if rounded < 500:
+            rounded = 500
+        suggestions.append({
+            "category_id": row.category_id,
+            "category_name": cat.name,
+            "avg_monthly_cents": avg,
+            "suggested_cents": rounded,
+            "total_cents": row.total,
+            "months": months,
+            "txn_count": row.txn_count,
+        })
+
+    suggestions.sort(key=lambda s: s["total_cents"], reverse=True)
+    return suggestions

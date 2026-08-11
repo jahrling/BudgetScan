@@ -50,6 +50,14 @@ async def budget_status(
     return await budget_service.get_budget_status(session, start, end)
 
 
+@router.get("/suggestions")
+async def spending_suggestions(
+    months: int = Query(3, ge=1, le=12),
+    session: AsyncSession = Depends(get_session),
+):
+    return await budget_service.get_spending_suggestions(session, months)
+
+
 @router.get("/{budget_id}", response_model=BudgetRead)
 async def get_budget(
     budget_id: int, session: AsyncSession = Depends(get_session)

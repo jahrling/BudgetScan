@@ -17,6 +17,24 @@ export function useBudgetStatus() {
   });
 }
 
+export interface SpendingSuggestion {
+  category_id: number;
+  category_name: string;
+  avg_monthly_cents: number;
+  suggested_cents: number;
+  total_cents: number;
+  months: number;
+  txn_count: number;
+}
+
+export function useSpendingSuggestions(months = 3) {
+  return useQuery({
+    queryKey: ["budgets", "suggestions", months],
+    queryFn: () =>
+      api.get<SpendingSuggestion[]>(`/budgets/suggestions?months=${months}`),
+  });
+}
+
 export function useCreateBudget() {
   const qc = useQueryClient();
   return useMutation({
