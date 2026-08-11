@@ -37,18 +37,40 @@ interface Candidate {
   splits: SplitCandidate[];
   match_status: "new" | "duplicate" | "likely-duplicate" | "matched-receipt";
   match_transaction_id: number | null;
+  match_description: string | null;
+  match_amount_cents: number | null;
+  match_posted_at: string | null;
+  match_category_path: string | null;
+}
+
+interface RulePersistResult {
+  created: number;
+  updated: number;
+  unchanged: number;
 }
 
 interface ParseResult {
   candidates: Candidate[];
   unmapped_accounts: string[];
   errors: string[];
+  rule_persist_result: RulePersistResult | null;
 }
 
-type RowAction = "create" | "skip" | `merge-with:${number}`;
+type RowAction = "create" | "skip" | `merge-with:${number}` | `overwrite:${number}`;
+
+function isTrueRepeat(c: Candidate): boolean {
+  if (!c.match_transaction_id) return false;
+  if (c.match_description !== null && c.description !== null
+      && c.match_description === c.description
+      && c.match_amount_cents === c.amount_cents) {
+    return true;
+  }
+  return false;
+}
 
 function defaultActionFor(c: Candidate): RowAction {
   if (c.match_status === "duplicate" && c.match_transaction_id) return "skip";
+  if (c.match_status === "likely-duplicate" && isTrueRepeat(c)) return "skip";
   if (c.match_status === "matched-receipt" && c.match_transaction_id)
     return `merge-with:${c.match_transaction_id}`;
   return "create";
@@ -138,6 +160,7 @@ function ImportSection({
   const [confirmResult, setConfirmResult] = useState<{
     created_ids: number[];
     merged_ids: number[];
+    overwritten_ids: number[];
     skipped: number;
     errors: string[];
   } | null>(null);
@@ -193,6 +216,7 @@ function ImportSection({
       return apiFetch<{
         created_ids: number[];
         merged_ids: number[];
+        overwritten_ids: number[];
         skipped: number;
         errors: string[];
       }>("/api/import/confirm", {
@@ -341,6 +365,7 @@ function CandidateReview({
   confirmResult: {
     created_ids: number[];
     merged_ids: number[];
+    overwritten_ids: number[];
     skipped: number;
     errors: string[];
   } | null;
@@ -352,6 +377,18 @@ function CandidateReview({
 
   return (
     <div className="mt-4 space-y-3">
+      {parsed.rule_persist_result && (parsed.rule_persist_result.created > 0 || parsed.rule_persist_result.updated > 0) && (
+        <div className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-800">
+          <p className="font-medium">Memorized rules imported</p>
+          <p className="text-xs mt-1 text-sky-700">
+            {parsed.rule_persist_result.created > 0 && `${parsed.rule_persist_result.created} created`}
+            {parsed.rule_persist_result.created > 0 && parsed.rule_persist_result.updated > 0 && ", "}
+            {parsed.rule_persist_result.updated > 0 && `${parsed.rule_persist_result.updated} updated`}
+            {parsed.rule_persist_result.unchanged > 0 && `, ${parsed.rule_persist_result.unchanged} unchanged`}
+          </p>
+        </div>
+      )}
+
       {parsed.errors.length > 0 && (
         <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-800">
           <p className="font-semibold mb-1">Errors:</p>
@@ -406,13 +443,37 @@ function CandidateReview({
         </Label>
       </div>
 
+      {(() => {
+        const newCount = parsed.candidates.filter(c => c.match_status === "new").length;
+        const dupCount = parsed.candidates.filter(c => c.match_status === "duplicate").length;
+        const likelyDupCount = parsed.candidates.filter(c => c.match_status === "likely-duplicate").length;
+        const autoSkipped = parsed.candidates.filter((c, i) => actions[i] === "skip" && c.match_status !== "new").length;
+        return (
+          <div className="rounded-md bg-gray-50 border border-gray-200 p-3 text-xs text-gray-700 space-y-1">
+            <p className="font-medium text-sm text-gray-800">
+              {parsed.candidates.length} transactions found
+            </p>
+            <p>
+              {newCount > 0 && <span className="text-emerald-600 font-medium">{newCount} new</span>}
+              {dupCount > 0 && <>{newCount > 0 && ", "}<span className="text-amber-600 font-medium">{dupCount} duplicate</span></>}
+              {likelyDupCount > 0 && <>{(newCount > 0 || dupCount > 0) && ", "}<span className="text-orange-500 font-medium">{likelyDupCount} likely duplicate</span></>}
+            </p>
+            {autoSkipped > 0 && (
+              <p className="text-gray-500">
+                {autoSkipped} identical transactions will be skipped (same description, amount, date).
+              </p>
+            )}
+          </div>
+        );
+      })()}
+
       <button
         type="button"
         onClick={() => setExpanded(!expanded)}
         className="flex w-full items-center justify-between text-sm font-medium text-gray-700 py-1"
       >
         <span>
-          {parsed.candidates.length} transactions found
+          {expanded ? "Hide" : "Show"} transaction details
         </span>
         {expanded ? (
           <ChevronUp className="h-4 w-4" />
@@ -426,7 +487,13 @@ function CandidateReview({
           {parsed.candidates.map((c, i) => (
             <div
               key={i}
-              className="rounded-lg border border-gray-200 bg-white p-3"
+              className={`rounded-lg border p-3 ${
+                actions[i] === "skip"
+                  ? "border-gray-200 bg-gray-50 opacity-60"
+                  : c.match_status === "duplicate" || c.match_status === "likely-duplicate"
+                    ? "border-amber-200 bg-amber-50/30"
+                    : "border-gray-200 bg-white"
+              }`}
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
@@ -461,10 +528,40 @@ function CandidateReview({
                             : "text-emerald-600"
                     }`}
                   >
-                    {c.match_status === "likely-duplicate" ? "likely dup" : c.match_status}
+                    {c.match_status === "likely-duplicate"
+                      ? isTrueRepeat(c) ? "exact match — skip" : "likely dup"
+                      : c.match_status}
                   </span>
                 </div>
               </div>
+
+              {/* Comparison with existing transaction */}
+              {c.match_transaction_id && c.match_description !== null && (
+                <div className="mt-2 rounded border border-gray-200 bg-gray-50 p-2 text-xs">
+                  <p className="font-medium text-gray-600 mb-1">
+                    Existing #{c.match_transaction_id}:
+                  </p>
+                  <div className="flex justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className={`truncate ${c.match_description !== c.description ? "text-orange-700 font-medium" : "text-gray-600"}`}>
+                        {c.match_description}
+                      </p>
+                      {c.match_posted_at && (
+                        <p className="text-gray-500">{c.match_posted_at.slice(0, 10)}</p>
+                      )}
+                      {c.match_category_path && (
+                        <p className="text-sky-600">{c.match_category_path}</p>
+                      )}
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className={`font-semibold tabular-nums ${c.match_amount_cents !== c.amount_cents ? "text-orange-700" : "text-gray-600"}`}>
+                        {c.match_amount_cents !== null ? formatCents(c.match_amount_cents) : "—"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="mt-2">
                 <Select
                   value={actions[i] ?? "create"}
@@ -476,12 +573,17 @@ function CandidateReview({
                   disabled={c.account_id === null}
                   className="h-8 text-xs"
                 >
-                  <option value="create">Create</option>
+                  <option value="create">Create new</option>
                   <option value="skip">Skip</option>
                   {c.match_transaction_id && (
-                    <option value={`merge-with:${c.match_transaction_id}`}>
-                      Merge with #{c.match_transaction_id}
-                    </option>
+                    <>
+                      <option value={`overwrite:${c.match_transaction_id}`}>
+                        Overwrite #{c.match_transaction_id}
+                      </option>
+                      <option value={`merge-with:${c.match_transaction_id}`}>
+                        Merge with #{c.match_transaction_id}
+                      </option>
+                    </>
                   )}
                 </Select>
                 {c.account_id === null && (
@@ -497,18 +599,44 @@ function CandidateReview({
       <div className="fixed bottom-16 left-0 right-0 z-10 bg-white/95 backdrop-blur border-t border-gray-200 px-4 py-3 md:sticky md:bottom-0 md:left-auto md:right-auto md:mt-2 md:rounded-lg md:border md:shadow-sm">
         <div className="mx-auto max-w-lg md:max-w-none">
           {confirmResult ? (
-            <div className="text-sm text-center">
+            <div className="text-sm">
               {confirmResult.errors.length === 0 ? (
-                <span className="text-emerald-700">
-                  Created {confirmResult.created_ids.length}, merged{" "}
-                  {confirmResult.merged_ids.length}, skipped{" "}
-                  {confirmResult.skipped}.
-                </span>
+                <div className="rounded-md bg-emerald-50 border border-emerald-200 p-3 text-center">
+                  <p className="font-medium text-emerald-800">Import complete</p>
+                  <p className="text-emerald-700 mt-1">
+                    Created {confirmResult.created_ids.length}
+                    {confirmResult.overwritten_ids.length > 0 && `, overwritten ${confirmResult.overwritten_ids.length}`}
+                    , merged {confirmResult.merged_ids.length}
+                    , skipped {confirmResult.skipped}.
+                  </p>
+                </div>
               ) : (
-                <span className="text-red-700">
-                  Errors: {confirmResult.errors.join("; ")}
-                </span>
+                <div className="rounded-md bg-red-50 border border-red-200 p-3">
+                  <p className="font-medium text-red-800">Import finished with errors</p>
+                  <p className="text-red-700 mt-1">
+                    {confirmResult.errors.join("; ")}
+                  </p>
+                  {(confirmResult.created_ids.length > 0 || confirmResult.merged_ids.length > 0) && (
+                    <p className="text-red-600 mt-1 text-xs">
+                      ({confirmResult.created_ids.length} created, {confirmResult.merged_ids.length} merged, {confirmResult.skipped} skipped before error)
+                    </p>
+                  )}
+                </div>
               )}
+            </div>
+          ) : confirmMut.isError ? (
+            <div className="text-sm">
+              <div className="rounded-md bg-red-50 border border-red-200 p-3">
+                <p className="font-medium text-red-800">Apply failed</p>
+                <p className="text-red-700 mt-1">{String(confirmMut.error)}</p>
+              </div>
+              <Button
+                onClick={() => confirmMut.mutate()}
+                disabled={confirmMut.isPending}
+                className="w-full mt-2"
+              >
+                Retry
+              </Button>
             </div>
           ) : (
             <Button
@@ -517,7 +645,7 @@ function CandidateReview({
               className="w-full"
             >
               {confirmMut.isPending
-                ? "Applying…"
+                ? "Applying… please wait"
                 : `Apply ${parsed.candidates.length} transactions`}
             </Button>
           )}

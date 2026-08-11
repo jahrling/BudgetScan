@@ -22,6 +22,10 @@ class TransactionCandidateSchema(BaseModel):
     transfer_account: str | None = None
     match_status: str = "new"
     match_transaction_id: int | None = None
+    match_description: str | None = None
+    match_amount_cents: int | None = None
+    match_posted_at: datetime | None = None
+    match_category_path: str | None = None
 
 
 class CategoryDefinitionSchema(BaseModel):
@@ -78,5 +82,6 @@ class ConfirmRequest(BaseModel):
 class ConfirmResponse(BaseModel):
     created_ids: list[int]
     merged_ids: list[int]
+    overwritten_ids: list[int] = Field(default_factory=list)
     skipped: int
     errors: list[str]

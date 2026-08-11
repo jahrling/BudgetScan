@@ -73,6 +73,10 @@ class TransactionCandidate:
     # Populated by match_candidates():
     match_status: str = "new"  # 'new' | 'duplicate' | 'likely-duplicate' | 'matched-receipt'
     match_transaction_id: int | None = None
+    match_description: str | None = None
+    match_amount_cents: int | None = None
+    match_posted_at: datetime | None = None
+    match_category_path: str | None = None
 
 
 @dataclass
@@ -614,6 +618,15 @@ def _parse_qif_date(raw: str) -> datetime:
 # ──────────────────────────────────────────────────────────────────────────────
 
 
+def _populate_match_details(c: TransactionCandidate, existing: Transaction) -> None:
+    c.match_transaction_id = existing.id
+    c.match_description = existing.description
+    c.match_amount_cents = existing.amount_cents
+    c.match_posted_at = existing.posted_at
+    if hasattr(existing, "category") and existing.category is not None:
+        c.match_category_path = existing.category.name
+
+
 async def match_candidates(
     session: AsyncSession,
     candidates: list[TransactionCandidate],
@@ -645,7 +658,7 @@ async def match_candidates(
             existing = fitid_match.scalar_one_or_none()
             if existing is not None:
                 c.match_status = "duplicate"
-                c.match_transaction_id = existing.id
+                _populate_match_details(c, existing)
                 continue
 
         same_day_start = c.posted_at.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -665,7 +678,7 @@ async def match_candidates(
             existing = desc_match.scalar_one_or_none()
             if existing is not None:
                 c.match_status = "duplicate"
-                c.match_transaction_id = existing.id
+                _populate_match_details(c, existing)
                 continue
 
         # 3. Receipt match within ±2 days
@@ -683,7 +696,7 @@ async def match_candidates(
         rmatch = receipt_match.scalar_one_or_none()
         if rmatch is not None:
             c.match_status = "matched-receipt"
-            c.match_transaction_id = rmatch.id
+            _populate_match_details(c, rmatch)
             continue
 
         # 4. Amount + date only — weaker signal, let user decide
@@ -698,7 +711,7 @@ async def match_candidates(
         existing = amount_date_match.scalar_one_or_none()
         if existing is not None:
             c.match_status = "likely-duplicate"
-            c.match_transaction_id = existing.id
+            _populate_match_details(c, existing)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -767,13 +780,14 @@ class ConfirmAction:
     """One row of /api/import/confirm body."""
 
     candidate_index: int
-    action: str  # 'create' | 'skip' | 'merge-with:<existing_tx_id>'
+    action: str  # 'create' | 'skip' | 'merge-with:<id>' | 'overwrite:<id>'
 
 
 @dataclass
 class ConfirmResult:
     created_ids: list[int] = field(default_factory=list)
     merged_ids: list[int] = field(default_factory=list)
+    overwritten_ids: list[int] = field(default_factory=list)
     skipped: int = 0
     errors: list[str] = field(default_factory=list)
 
@@ -808,6 +822,9 @@ async def apply_confirmations(
             if action.action.startswith("merge-with:"):
                 target_id = int(action.action.split(":", 1)[1])
                 await _merge_candidate(session, cand, target_id, result, create_missing_categories)
+            elif action.action.startswith("overwrite:"):
+                target_id = int(action.action.split(":", 1)[1])
+                await _overwrite_candidate(session, cand, target_id, result, create_missing_categories)
             elif action.action == "create":
                 await _create_from_candidate(session, cand, result, create_missing_categories)
             else:
@@ -917,6 +934,49 @@ async def _merge_candidate(
         target.quicken_id = cand.quicken_id
     target.status = "final"  # Quicken-confirmed
     result.merged_ids.append(target.id)
+
+
+async def _overwrite_candidate(
+    session: AsyncSession,
+    cand: TransactionCandidate,
+    target_id: int,
+    result: ConfirmResult,
+    create_missing_categories: bool,
+) -> None:
+    target = await session.get(Transaction, target_id)
+    if target is None:
+        result.errors.append(f"overwrite target {target_id} not found")
+        return
+    assert cand.account_id is not None
+    target.account_id = cand.account_id
+    target.posted_at = cand.posted_at
+    target.amount_cents = cand.amount_cents
+    target.description = cand.description
+    if cand.quicken_id:
+        target.quicken_id = cand.quicken_id
+
+    if cand.splits:
+        existing_items = await session.execute(
+            select(LineItem).where(LineItem.transaction_id == target.id)
+        )
+        for li in existing_items.scalars().all():
+            await session.delete(li)
+        await session.flush()
+
+        items = await _resolve_splits(
+            session, cand.splits, cand.amount_cents, create_missing_categories, result
+        )
+        if items is None:
+            return
+        for i in items:
+            i.transaction_id = target.id
+            session.add(i)
+        if len(items) > 1:
+            target.status = "split"
+        else:
+            target.status = "pending"
+
+    result.overwritten_ids.append(target.id)
 
 
 async def _get_or_create_uncategorized(session: AsyncSession) -> Category:

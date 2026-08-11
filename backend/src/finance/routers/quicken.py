@@ -60,6 +60,10 @@ def _to_schema(result: svc.ParseResult) -> ParseResultSchema:
                 transfer_account=c.transfer_account,
                 match_status=c.match_status,
                 match_transaction_id=c.match_transaction_id,
+                match_description=c.match_description,
+                match_amount_cents=c.match_amount_cents,
+                match_posted_at=c.match_posted_at,
+                match_category_path=c.match_category_path,
             )
             for c in result.candidates
         ],
@@ -179,6 +183,7 @@ async def confirm_import(
     return ConfirmResponse(
         created_ids=result.created_ids,
         merged_ids=result.merged_ids,
+        overwritten_ids=result.overwritten_ids,
         skipped=result.skipped,
         errors=result.errors,
     )
