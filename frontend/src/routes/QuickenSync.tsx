@@ -149,7 +149,7 @@ function ImportSection({
   const qc = useQueryClient();
   const { data: accounts = [] } = useAccounts();
   const createAccount = useCreateAccount();
-  const { pendingFile, consumeFile } = usePendingFile();
+  const { pendingFile, consumeFile, resetDrag } = usePendingFile();
 
   const [parsed, setParsed] = useState<ParseResult | null>(null);
   const [actions, setActions] = useState<RowAction[]>([]);
@@ -209,7 +209,7 @@ function ImportSection({
     mutationFn: async () => {
       if (!parsed) throw new Error("no parsed data");
       const body = {
-        candidates: parsed.candidates,
+        candidates: parsed.candidates.map(({ match_description, match_amount_cents, match_posted_at, match_category_path, ...c }) => c),
         actions: actions.map((a, i) => ({ candidate_index: i, action: a })),
         create_missing_categories: createMissing,
       };
@@ -278,6 +278,7 @@ function ImportSection({
           e.preventDefault();
           e.stopPropagation();
           setLocalDragging(false);
+          resetDrag();
           const f = e.dataTransfer.files[0];
           if (f) handleFile(f);
         }}

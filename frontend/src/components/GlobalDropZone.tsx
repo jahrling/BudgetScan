@@ -31,11 +31,13 @@ function routeForFile(file: File): FileRoute {
 interface DropContextValue {
   pendingFile: File | null;
   consumeFile: () => File | null;
+  resetDrag: () => void;
 }
 
 const DropContext = createContext<DropContextValue>({
   pendingFile: null,
   consumeFile: () => null,
+  resetDrag: () => {},
 });
 
 export function usePendingFile() {
@@ -56,6 +58,11 @@ export function GlobalDropZone({ children }: { children: ReactNode }) {
     setPendingFile(null);
     return f;
   }, [pendingFile]);
+
+  const resetDrag = useCallback(() => {
+    dragCounter.current = 0;
+    setDragging(false);
+  }, []);
 
   useEffect(() => {
     if (uploadError) {
@@ -128,7 +135,7 @@ export function GlobalDropZone({ children }: { children: ReactNode }) {
   }, [location.pathname, navigate]);
 
   return (
-    <DropContext.Provider value={{ pendingFile, consumeFile }}>
+    <DropContext.Provider value={{ pendingFile, consumeFile, resetDrag }}>
       {children}
       {(dragging || uploading) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm pointer-events-none">
