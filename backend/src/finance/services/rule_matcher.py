@@ -1,15 +1,16 @@
-"""Deterministic rule matching (Tiers 0-1) for the categorization pipeline.
+"""Rule matching (Tiers 0-2) for the categorization pipeline.
 
 Tier 0 -- exact normalized match against the ``MemorizedRule`` table.
 Tier 1 -- substring / token-overlap fallback when Tier 0 misses.
+Tier 2 -- embedding similarity against a local vector index of rule payees.
 
-Both tiers are pure DB + string operations with zero model involvement.
-Together they should resolve the majority of recurring transactions before
-any embedding or LLM tier is invoked.
+Tiers 0-1 are pure DB + string operations with zero model involvement.
+Tier 2 requires an ``Embedder`` and the rules vector index built by
+``vector_store.rebuild_rules_index``.
 
 Usage::
 
-    result = await match_rule(session, cleaned_description)
+    result = await match_rule(session, cleaned_description, embedder=embedder)
     if result:
         print(f"Matched rule {result.rule_id} at tier={result.tier}")
 """
@@ -23,12 +24,17 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from finance.models.memorized_rule import MemorizedRule
+from finance.services.embeddings import Embedder
 from finance.services.merchant_resolver import normalize_for_matching
+from finance.services.vector_store import VectorStore, rules_index_path
 
 logger = logging.getLogger(__name__)
 
 # Minimum character length for a substring/token match to count.
 _MIN_MATCH_LENGTH = 5
+
+_TIER2_HIGH_THRESHOLD = 0.92
+_TIER2_MIN_THRESHOLD = 0.70
 
 
 @dataclass
@@ -38,13 +44,27 @@ class RuleMatch:
     rule_id: int
     category_id: int | None
     category_path: str
-    tier: str  # "exact" | "substring"
+    tier: str  # "exact" | "substring" | "embedding"
     confidence: float
+    similar_rules: list[SimilarRule] | None = None
+
+
+@dataclass
+class SimilarRule:
+    """A memorized rule retrieved via embedding similarity (Tier 2)."""
+
+    rule_id: int
+    payee: str
+    category_path: str
+    category_id: int | None
+    score: float
 
 
 async def match_rule(
     session: AsyncSession,
     cleaned_description: str,
+    *,
+    embedder: Embedder | None = None,
 ) -> RuleMatch | None:
     """Try to match *cleaned_description* against memorized rules.
 
@@ -53,11 +73,11 @@ async def match_rule(
     Resolution order:
       1. Tier 0 -- exact normalized match (confidence 1.0)
       2. Tier 1 -- substring / token overlap (confidence 0.85)
+      3. Tier 2 -- embedding similarity against rules index
 
-    >>> # (requires a live DB session with rules loaded)
-    >>> result = await match_rule(session, "Costco")
-    >>> result.tier
-    'exact'
+    When Tier 2 finds a high-confidence match (>= 0.92) it returns
+    directly.  For moderate matches it returns the top-k similar rules
+    as ``similar_rules`` for use as few-shot context in Tier 3.
     """
     normalized = normalize_for_matching(cleaned_description)
     if not normalized:
@@ -73,7 +93,17 @@ async def match_rule(
     # ------------------------------------------------------------------
     # Tier 1: substring / token overlap
     # ------------------------------------------------------------------
-    return await _tier1_substring(session, normalized)
+    result = await _tier1_substring(session, normalized)
+    if result is not None:
+        return result
+
+    # ------------------------------------------------------------------
+    # Tier 2: embedding similarity
+    # ------------------------------------------------------------------
+    if embedder is not None:
+        return await _tier2_embedding(session, cleaned_description, embedder)
+
+    return None
 
 
 async def _tier0_exact(
@@ -173,3 +203,90 @@ def _pick_best(rules: list[MemorizedRule] | list) -> MemorizedRule:
         return (has_category, is_user, r.id)
 
     return max(rules, key=sort_key)
+
+
+async def _tier2_embedding(
+    session: AsyncSession,
+    cleaned_description: str,
+    embedder: Embedder,
+) -> RuleMatch | None:
+    """Tier 2: embed the description and search the rules vector index."""
+    index_path = rules_index_path()
+    if not index_path.exists():
+        logger.debug("Tier 2: rules index not found at %s", index_path)
+        return None
+
+    store = VectorStore(path=index_path).load()
+    if len(store) == 0:
+        return None
+
+    vecs = await embedder.embed([cleaned_description])
+    query_vec = vecs[0]
+
+    hits = store.search(query_vec, k=8)
+    if not hits or hits[0].score < _TIER2_MIN_THRESHOLD:
+        return None
+
+    hit_rule_ids = [h.ref_id for h in hits if h.score >= _TIER2_MIN_THRESHOLD]
+    if not hit_rule_ids:
+        return None
+
+    stmt = (
+        select(MemorizedRule)
+        .where(MemorizedRule.id.in_(hit_rule_ids))
+        .where(MemorizedRule.status == "active")
+    )
+    rules_by_id = {
+        r.id: r for r in (await session.execute(stmt)).scalars().all()
+    }
+
+    similar: list[SimilarRule] = []
+    for hit in hits:
+        rule = rules_by_id.get(hit.ref_id)
+        if rule is None:
+            continue
+        similar.append(
+            SimilarRule(
+                rule_id=rule.id,
+                payee=rule.payee,
+                category_path=rule.category_path,
+                category_id=rule.category_id,
+                score=hit.score,
+            )
+        )
+
+    if not similar:
+        return None
+
+    best = similar[0]
+
+    if best.score >= _TIER2_HIGH_THRESHOLD:
+        logger.debug(
+            "Tier 2 high-confidence match: rule %d (score=%.3f) for %r",
+            best.rule_id,
+            best.score,
+            cleaned_description,
+        )
+        return RuleMatch(
+            rule_id=best.rule_id,
+            category_id=best.category_id,
+            category_path=best.category_path,
+            tier="embedding",
+            confidence=best.score,
+            similar_rules=similar,
+        )
+
+    logger.debug(
+        "Tier 2 moderate matches: top score=%.3f for %r, returning %d similar rules",
+        best.score,
+        cleaned_description,
+        len(similar),
+    )
+    return RuleMatch(
+        rule_id=best.rule_id,
+        category_id=best.category_id,
+        category_path=best.category_path,
+        tier="embedding",
+        confidence=best.score,
+        similar_rules=similar,
+    )

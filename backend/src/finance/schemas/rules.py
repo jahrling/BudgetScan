@@ -58,3 +58,7 @@ class RulePreviewMatch(BaseModel):
 class RulePreviewResponse(BaseModel):
     matches: list[RulePreviewMatch]
     total_matches: int
+
+
+class RuleReindexResponse(BaseModel):
+    indexed: int

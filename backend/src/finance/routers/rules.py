@@ -13,10 +13,13 @@ from finance.schemas.rules import (
     RulePreviewMatch,
     RulePreviewRequest,
     RulePreviewResponse,
+    RuleReindexResponse,
     RuleResponse,
     RuleUpdate,
 )
+from finance.services.embeddings import default_embedder
 from finance.services.merchant_resolver import normalize_for_matching
+from finance.services.vector_store import rebuild_rules_index
 
 router = APIRouter(
     prefix="/api/rules",
@@ -191,3 +194,9 @@ async def preview_existing_rule(
     return await _preview_matches(
         session, rule.normalized_payee, rule.amount_cents
     )
+
+
+@router.post("/reindex", response_model=RuleReindexResponse)
+async def reindex_rules(session: AsyncSession = Depends(get_session)):
+    store = await rebuild_rules_index(session, default_embedder())
+    return RuleReindexResponse(indexed=len(store))

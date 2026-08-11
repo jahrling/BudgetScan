@@ -9,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from finance.auth.dependencies import current_user
 from finance.db import get_session
 from finance.models.account import Account
+from finance.services.embeddings import default_embedder
+from finance.services.vector_store import rebuild_rules_index
 from finance.schemas.quicken import (
     CategoryDefinitionSchema,
     ConfirmRequest,
@@ -127,6 +129,12 @@ async def import_qif(
             ],
         )
         await session.commit()
+
+        if persist_result.created > 0 or persist_result.updated > 0:
+            try:
+                await rebuild_rules_index(session, default_embedder())
+            except Exception:
+                pass
 
     return schema
 

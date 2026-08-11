@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from finance.config import settings
 from finance.models.annotation import Annotation
 from finance.models.line_item import LineItem
+from finance.models.memorized_rule import MemorizedRule
 from finance.services.embeddings import Embedder
 
 
@@ -177,6 +178,51 @@ async def rebuild_from_db(
             vector=vector,
         )
         for (source, ref_id, txn_id, text), vector in zip(corpus, vectors, strict=True)
+    ]
+    store.replace_all(entries)
+    if persist:
+        store.save()
+    return store
+
+
+def rules_index_path() -> Path:
+    return Path(settings.vector_index_dir) / "rules_index.json"
+
+
+async def rebuild_rules_index(
+    session: AsyncSession,
+    embedder: Embedder,
+    *,
+    path: Path | None = None,
+    persist: bool = True,
+) -> VectorStore:
+    """Embed all active memorized-rule payees into a separate vector index.
+
+    This index powers Tier 2 matching: when Tiers 0-1 miss, the cleaned
+    transaction description is embedded and searched against this index to
+    find the most similar memorized rules.
+    """
+    stmt = select(MemorizedRule).where(MemorizedRule.status == "active")
+    rows = (await session.execute(stmt)).scalars().all()
+
+    store = VectorStore(path=path or _rules_index_path())
+    if not rows:
+        store.replace_all([])
+        if persist:
+            store.save()
+        return store
+
+    texts = [r.payee for r in rows]
+    vectors = await embedder.embed(texts)
+    entries = [
+        VectorEntry(
+            source="memorized_rule",
+            ref_id=r.id,
+            transaction_id=None,
+            text=r.payee,
+            vector=vec,
+        )
+        for r, vec in zip(rows, vectors, strict=True)
     ]
     store.replace_all(entries)
     if persist:
