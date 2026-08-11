@@ -305,7 +305,11 @@ function ImportSection({
           className="hidden"
           disabled={uploadMut.isPending}
         />
-        <Upload className={`h-8 w-8 mb-2 ${localDragging ? "text-sky-400" : "text-gray-400"}`} />
+        {uploadMut.isPending ? (
+          <span className="inline-block h-3 w-3 rounded-sm bg-sky-500 mb-3 animate-pulse" />
+        ) : (
+          <Upload className={`h-8 w-8 mb-2 ${localDragging ? "text-sky-400" : "text-gray-400"}`} />
+        )}
         {uploadMut.isPending ? (
           <p className="text-sm text-gray-500">Parsing{fileName ? ` ${fileName}` : ""}…</p>
         ) : (
