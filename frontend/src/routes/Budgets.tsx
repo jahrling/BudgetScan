@@ -147,17 +147,6 @@ export default function Budgets() {
     [],
   );
 
-  async function saveSliderEdit(b: Budget) {
-    const newAmount = sliderEdits[b.id];
-    if (newAmount === undefined || newAmount === b.amount_cents) return;
-    await updateMut.mutateAsync({ id: b.id, amount_cents: newAmount });
-    setSliderEdits((prev) => {
-      const next = { ...prev };
-      delete next[b.id];
-      return next;
-    });
-  }
-
   async function applySuggestion(b: Budget) {
     const sug = suggestMap.get(b.category_id);
     if (!sug) return;
@@ -257,7 +246,6 @@ export default function Budgets() {
                   historicalAvg={sug?.avg_monthly_cents ?? null}
                   isEdited={isEdited}
                   onSliderChange={(cents) => handleSliderChange(b.id, cents)}
-                  onSave={() => saveSliderEdit(b)}
                   onSuggest={() => applySuggestion(b)}
                   onEdit={() => openEdit(b)}
                   onDelete={() => handleDelete(b.id)}
@@ -428,7 +416,6 @@ function BudgetRow({
   historicalAvg,
   isEdited,
   onSliderChange,
-  onSave,
   onSuggest,
   onEdit,
   onDelete,
@@ -442,7 +429,6 @@ function BudgetRow({
   historicalAvg: number | null;
   isEdited: boolean;
   onSliderChange: (cents: number) => void;
-  onSave: () => void;
   onSuggest: () => void;
   onEdit: () => void;
   onDelete: () => void;
