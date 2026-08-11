@@ -1,12 +1,15 @@
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from finance.auth.dependencies import current_user
 from finance.db import get_session
+from finance.models.category import Category
+from finance.models.memorized_rule import MemorizedRule
+from finance.models.merchant import Merchant
 from finance.models.transaction import Transaction
 from finance.schemas.line_item import LineItemRead, LineItemsReplace
 from finance.schemas.transaction import (
@@ -18,6 +21,10 @@ from finance.schemas.transaction import (
 from finance.services import transaction as txn_service
 from finance.services.categorization_pipeline import categorize
 from finance.services.embeddings import default_embedder
+from finance.services.merchant_resolver import (
+    clean_description,
+    normalize_for_matching,
+)
 
 router = APIRouter(
     prefix="/api/transactions",
@@ -175,15 +182,10 @@ async def categorize_transactions(
             skipped += 1
             continue
 
-        resolved_merchant = None
-        if txn.merchant and txn.merchant.resolved_name:
-            resolved_merchant = txn.merchant.resolved_name
-
         result = await categorize(
             session,
             txn.description,
             txn.amount_cents,
-            resolved_merchant=resolved_merchant,
             embedder=embedder,
             skip_llm=body.skip_llm,
         )
@@ -192,6 +194,9 @@ async def categorize_transactions(
         txn.category_confidence = result.confidence
         txn.category_source = result.source
         txn.needs_review = result.needs_review
+
+        if result.resolved_merchant and result.resolved_merchant.merchant_id:
+            txn.merchant_id = result.resolved_merchant.merchant_id
 
         results.append(
             CategorizedTransaction(
@@ -210,4 +215,119 @@ async def categorize_transactions(
         results=results,
         processed=len(results),
         skipped=skipped,
+    )
+
+
+class ConfirmCategoryRequest(BaseModel):
+    category_id: int
+    merchant_name: str | None = None
+
+
+class ConfirmCategoryResponse(BaseModel):
+    transaction_id: int
+    category_id: int
+    rule_id: int | None = None
+    merchant_updated: bool = False
+
+
+def _build_category_path(cat) -> str:
+    parts = [cat.name]
+    parent = cat.parent
+    while parent is not None:
+        parts.append(parent.name)
+        parent = parent.parent
+    return ":".join(reversed(parts))
+
+
+@router.post("/{txn_id}/confirm-category", response_model=ConfirmCategoryResponse)
+async def confirm_category(
+    txn_id: int,
+    body: ConfirmCategoryRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Confirm or correct a transaction's category.
+
+    This is the feedback loop: the user's choice is recorded on the
+    transaction and feeds back into the categorization system by
+    creating/updating a MemorizedRule and optionally updating the
+    merchant's resolved_name.
+    """
+    txn = await txn_service.get_transaction(session, txn_id)
+    cat = await session.get(Category, body.category_id)
+    if cat is None:
+        raise HTTPException(status_code=400, detail="Category not found")
+
+    # Update the transaction
+    txn.category_id = body.category_id
+    txn.category_source = "user"
+    txn.category_confidence = 1.0
+    txn.needs_review = False
+
+    category_path = _build_category_path(cat)
+    rule_id = None
+
+    # Create or update a MemorizedRule for this payee
+    if txn.description:
+        cleaned = clean_description(txn.description)
+        normalized = normalize_for_matching(cleaned or txn.description)
+
+        if normalized:
+            stmt = (
+                select(MemorizedRule)
+                .where(MemorizedRule.normalized_payee == normalized)
+                .where(MemorizedRule.status == "active")
+            )
+            existing_rules = list(
+                (await session.execute(stmt)).scalars().all()
+            )
+
+            user_rules = [r for r in existing_rules if r.source == "user_created"]
+
+            if user_rules:
+                rule = user_rules[0]
+                rule.category_path = category_path
+                rule.category_id = body.category_id
+                rule_id = rule.id
+            else:
+                rule = MemorizedRule(
+                    payee=cleaned or txn.description,
+                    normalized_payee=normalized,
+                    category_path=category_path,
+                    category_id=body.category_id,
+                    source="user_created",
+                    status="active",
+                )
+                session.add(rule)
+                await session.flush()
+                rule_id = rule.id
+
+    # Update merchant resolved_name if provided
+    merchant_updated = False
+    if body.merchant_name and txn.merchant_id:
+        merchant = await session.get(Merchant, txn.merchant_id)
+        if merchant is not None:
+            merchant.resolved_name = body.merchant_name
+            merchant.resolution_source = "user"
+            merchant.resolution_confidence = 1.0
+            merchant_updated = True
+    elif body.merchant_name and txn.description:
+        cleaned = clean_description(txn.description)
+        if cleaned:
+            normalized = normalize_for_matching(cleaned)
+            stmt = select(Merchant).where(Merchant.normalized_name == normalized)
+            merchant = (await session.execute(stmt)).scalars().first()
+            if merchant is not None:
+                merchant.resolved_name = body.merchant_name
+                merchant.resolution_source = "user"
+                merchant.resolution_confidence = 1.0
+                txn.merchant_id = merchant.id
+                merchant_updated = True
+
+    await session.commit()
+
+    return ConfirmCategoryResponse(
+        transaction_id=txn.id,
+        category_id=body.category_id,
+        rule_id=rule_id,
+        merchant_updated=merchant_updated,
     )

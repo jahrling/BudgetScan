@@ -1,16 +1,21 @@
 """End-to-end categorization pipeline for bank transactions.
 
-Orchestrates the full Tier 0-3 cascade described in DESIGN_LLM_CATEGORIZATION.md:
+Orchestrates the full identity + category cascade from DESIGN_LLM_CATEGORIZATION.md:
 
-  1. Layer A: regex/heuristic cleanup of raw description
-  2. Tier 0: exact normalized match against MemorizedRule table
-  3. Tier 1: substring / token overlap match
-  4. Tier 2: embedding similarity against rules vector index
-  5. Tier 3: LLM categorization with few-shot retrieved rules
+  Identity resolution (runs first):
+    Layer A: regex/heuristic cleanup of raw description
+    Layer B: lookup cleaned name in Merchant table
+    Layer C: LLM merchant-name guess
 
-Each tier is gated by the previous one failing. The pipeline returns a
-result with the category assignment, confidence, source tier, and whether
-the transaction needs human review.
+  Category assignment (runs on the resolved identity):
+    Tier 0: exact normalized match against MemorizedRule table
+    Tier 1: substring / token overlap match
+    Tier 2: embedding similarity against rules vector index
+    Tier 3: LLM categorization with few-shot retrieved rules
+
+Each step is gated by the previous one failing. The pipeline returns a
+result with the category assignment, confidence, source tier, resolved
+merchant identity, and whether the transaction needs human review.
 """
 
 from __future__ import annotations
@@ -21,7 +26,11 @@ from dataclasses import dataclass
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from finance.services.embeddings import Embedder
-from finance.services.merchant_resolver import clean_description
+from finance.services.merchant_resolver import (
+    MerchantIdentity,
+    clean_description,
+    resolve_merchant_identity,
+)
 from finance.services.rule_matcher import RuleMatch, match_rule
 from finance.services.transaction_categorizer import (
     CategorizationResult,
@@ -38,10 +47,11 @@ class PipelineResult:
     category_id: int | None
     category_path: str | None
     confidence: float
-    source: str  # "memorized_rule" | "llm" | "uncategorized"
-    tier: str  # "exact" | "substring" | "embedding" | "llm" | "none"
+    source: str  # "memorized_rule" | "llm" | "merchant_default" | "uncategorized"
+    tier: str  # "exact" | "substring" | "embedding" | "llm" | "merchant_default" | "none"
     needs_review: bool
     merchant_guess: str | None = None
+    resolved_merchant: MerchantIdentity | None = None
     similar_rules: list | None = None
 
 
@@ -50,15 +60,14 @@ async def categorize(
     raw_description: str,
     amount_cents: int,
     *,
-    resolved_merchant: str | None = None,
     embedder: Embedder | None = None,
     skip_llm: bool = False,
 ) -> PipelineResult:
-    """Run the full categorization cascade for a single transaction.
+    """Run the full identity + categorization cascade for a single transaction.
 
     Pass ``embedder`` to enable Tier 2 (embedding similarity).
-    Pass ``skip_llm=True`` to stop after Tier 2 (useful for bulk imports
-    where LLM calls should be deferred to avoid GPU contention).
+    Pass ``skip_llm=True`` to stop after deterministic tiers (useful for
+    bulk imports where LLM calls should be deferred).
     """
     cleaned = clean_description(raw_description)
     if not cleaned:
@@ -71,7 +80,28 @@ async def categorize(
             needs_review=True,
         )
 
-    # Tiers 0-2
+    # ── Identity resolution (Layers A-B-C) ──────────────────────────────
+    identity = await resolve_merchant_identity(
+        session, raw_description, skip_llm=skip_llm
+    )
+
+    # If identity resolved a merchant with a default_category_id and high
+    # confidence, that's an auto-assign candidate before we even check rules.
+    if (
+        identity.default_category_id is not None
+        and identity.confidence >= _AUTO_ASSIGN_CONFIDENCE
+    ):
+        return PipelineResult(
+            category_id=identity.default_category_id,
+            category_path=None,
+            confidence=identity.confidence,
+            source="merchant_default",
+            tier="merchant_default",
+            needs_review=False,
+            resolved_merchant=identity,
+        )
+
+    # ── Category assignment (Tiers 0-2) ─────────────────────────────────
     rule_match = await match_rule(session, cleaned, embedder=embedder)
 
     if rule_match is not None:
@@ -83,6 +113,7 @@ async def categorize(
                 source="memorized_rule",
                 tier=rule_match.tier,
                 needs_review=False,
+                resolved_merchant=identity,
                 similar_rules=rule_match.similar_rules,
             )
 
@@ -94,10 +125,11 @@ async def categorize(
                 source="memorized_rule",
                 tier=rule_match.tier,
                 needs_review=True,
+                resolved_merchant=identity,
                 similar_rules=rule_match.similar_rules,
             )
 
-    # Tier 3: LLM categorization
+    # ── Tier 3: LLM categorization ──────────────────────────────────────
     if skip_llm:
         if rule_match is not None:
             return PipelineResult(
@@ -107,7 +139,18 @@ async def categorize(
                 source="memorized_rule",
                 tier=rule_match.tier,
                 needs_review=True,
+                resolved_merchant=identity,
                 similar_rules=rule_match.similar_rules,
+            )
+        if identity.default_category_id is not None:
+            return PipelineResult(
+                category_id=identity.default_category_id,
+                category_path=None,
+                confidence=identity.confidence,
+                source="merchant_default",
+                tier="merchant_default",
+                needs_review=True,
+                resolved_merchant=identity,
             )
         return PipelineResult(
             category_id=None,
@@ -116,6 +159,7 @@ async def categorize(
             source="uncategorized",
             tier="none",
             needs_review=True,
+            resolved_merchant=identity,
         )
 
     similar = rule_match.similar_rules if rule_match else None
@@ -124,7 +168,7 @@ async def categorize(
         session,
         cleaned,
         amount_cents,
-        resolved_merchant=resolved_merchant,
+        resolved_merchant=identity.resolved_name,
         similar_rules=similar,
     )
 
@@ -137,6 +181,7 @@ async def categorize(
             tier="llm",
             needs_review=True,
             merchant_guess=llm_result.merchant_guess,
+            resolved_merchant=identity,
             similar_rules=similar,
         )
 
@@ -152,5 +197,6 @@ async def categorize(
         tier="llm",
         needs_review=needs_review,
         merchant_guess=llm_result.merchant_guess,
+        resolved_merchant=identity,
         similar_rules=similar,
     )

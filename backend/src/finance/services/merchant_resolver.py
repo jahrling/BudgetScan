@@ -18,7 +18,19 @@ Usage::
 
 from __future__ import annotations
 
+import json
+import logging
 import re
+from dataclasses import dataclass
+from typing import Any
+
+import httpx
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from finance.config import settings
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Processor prefixes -- order matters: longer/more specific patterns first
@@ -162,3 +174,193 @@ def normalize_for_matching(name: str) -> str:
     text = re.sub(r"[^a-z0-9\s]", "", text)
     text = re.sub(r"\s+", " ", text).strip()
     return text
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Layer B: known-merchant lookup in the Merchant table
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+@dataclass
+class MerchantIdentity:
+    """Result of merchant identity resolution."""
+
+    merchant_id: int | None
+    resolved_name: str | None
+    default_category_id: int | None
+    source: str  # "heuristic" | "merchant_table" | "llm" | "receipt" | "user"
+    confidence: float
+
+
+async def resolve_merchant_identity(
+    session: AsyncSession,
+    raw_description: str,
+    *,
+    skip_llm: bool = False,
+) -> MerchantIdentity:
+    """Run the Layer A→B→C identity cascade for a bank transaction.
+
+    Layer A: regex/heuristic cleanup (always runs).
+    Layer B: lookup cleaned name in Merchant.normalized_name.
+    Layer C: LLM merchant-name guess (if not skip_llm).
+
+    Returns a MerchantIdentity. On Layer C success, writes back to the
+    Merchant table so future occurrences hit Layer B.
+    """
+    from finance.models.merchant import Merchant
+
+    cleaned = clean_description(raw_description)
+    if not cleaned:
+        return MerchantIdentity(
+            merchant_id=None,
+            resolved_name=None,
+            default_category_id=None,
+            source="heuristic",
+            confidence=0.0,
+        )
+
+    normalized = normalize_for_matching(cleaned)
+
+    # Layer B: check Merchant table by normalized_name
+    stmt = select(Merchant).where(Merchant.normalized_name == normalized)
+    merchant = (await session.execute(stmt)).scalars().first()
+
+    if merchant is not None and merchant.resolved_name:
+        return MerchantIdentity(
+            merchant_id=merchant.id,
+            resolved_name=merchant.resolved_name,
+            default_category_id=merchant.default_category_id,
+            source=merchant.resolution_source or "merchant_table",
+            confidence=merchant.resolution_confidence or 0.95,
+        )
+
+    if merchant is not None:
+        return MerchantIdentity(
+            merchant_id=merchant.id,
+            resolved_name=merchant.name,
+            default_category_id=merchant.default_category_id,
+            source="merchant_table",
+            confidence=0.85,
+        )
+
+    # Layer C: LLM merchant-name guess
+    if skip_llm:
+        return MerchantIdentity(
+            merchant_id=None,
+            resolved_name=cleaned,
+            default_category_id=None,
+            source="heuristic",
+            confidence=0.50,
+        )
+
+    llm_result = await _llm_guess_merchant(cleaned)
+    if llm_result is None:
+        return MerchantIdentity(
+            merchant_id=None,
+            resolved_name=cleaned,
+            default_category_id=None,
+            source="heuristic",
+            confidence=0.50,
+        )
+
+    guessed_name = llm_result["merchant_name"]
+    llm_confidence_str = llm_result.get("confidence", "low")
+    confidence_map = {"high": 0.85, "medium": 0.70, "low": 0.50}
+    llm_confidence = confidence_map.get(llm_confidence_str, 0.50)
+
+    # Only persist LLM guesses with acceptable confidence
+    if llm_confidence >= 0.70:
+        new_merchant = Merchant(
+            name=guessed_name,
+            normalized_name=normalized,
+            resolved_name=guessed_name,
+            resolution_source="llm",
+            resolution_confidence=llm_confidence,
+        )
+        session.add(new_merchant)
+        await session.flush()
+
+        return MerchantIdentity(
+            merchant_id=new_merchant.id,
+            resolved_name=guessed_name,
+            default_category_id=None,
+            source="llm",
+            confidence=llm_confidence,
+        )
+
+    return MerchantIdentity(
+        merchant_id=None,
+        resolved_name=guessed_name,
+        default_category_id=None,
+        source="llm",
+        confidence=llm_confidence,
+    )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Layer C: LLM merchant-name guess
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+async def _llm_guess_merchant(cleaned_description: str) -> dict[str, str] | None:
+    """Ask the text model to guess the real merchant name.
+
+    Separate from the categorization call — resolving identity and choosing
+    a category are different judgments.
+    """
+    prompt = (
+        "You are identifying the real business name from a cleaned bank "
+        "transaction description. The description has already had payment "
+        "processor prefixes and trailing noise removed.\n\n"
+        f'Cleaned description: "{cleaned_description}"\n\n'
+        "What business is this most likely from? Respond with JSON only:\n"
+        '{"merchant_name": "<the real business name>", '
+        '"confidence": "high" | "medium" | "low"}'
+    )
+
+    url = f"{settings.ollama_url.rstrip('/')}/api/generate"
+    payload = {
+        "model": settings.ollama_text_model,
+        "prompt": prompt,
+        "stream": False,
+        "format": "json",
+        "options": {"temperature": 0.1},
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=settings.ollama_timeout_seconds) as client:
+            resp = await client.post(url, json=payload)
+            resp.raise_for_status()
+            raw = str(resp.json().get("response", ""))
+    except Exception as exc:
+        logger.warning("Layer C LLM merchant guess failed: %s", exc)
+        return None
+
+    parsed = _safe_load_json(raw)
+    merchant_name = parsed.get("merchant_name")
+    if not merchant_name or not isinstance(merchant_name, str):
+        return None
+
+    return {
+        "merchant_name": merchant_name.strip(),
+        "confidence": parsed.get("confidence", "low"),
+    }
+
+
+def _safe_load_json(text: str) -> dict[str, Any]:
+    text = text.strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*", "", text)
+        text = re.sub(r"\s*```$", "", text)
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        start = text.find("{")
+        end = text.rfind("}")
+        if start == -1 or end == -1 or end <= start:
+            return {}
+        try:
+            data = json.loads(text[start : end + 1])
+        except json.JSONDecodeError:
+            return {}
+    return data if isinstance(data, dict) else {}
