@@ -74,7 +74,7 @@ export default function QuickenSync() {
         blocker.reset();
       }
     }
-  }, [blocker]);
+  }, [blocker.state]);
 
   useEffect(() => {
     if (!hasUnapplied) return;
