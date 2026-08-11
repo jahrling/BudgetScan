@@ -57,12 +57,10 @@ def upgrade() -> None:
     if not _column_exists("transactions", "category_id"):
         with op.batch_alter_table("transactions") as batch:
             batch.add_column(
-                sa.Column(
-                    "category_id",
-                    sa.Integer(),
-                    sa.ForeignKey("categories.id"),
-                    nullable=True,
-                )
+                sa.Column("category_id", sa.Integer(), nullable=True)
+            )
+            batch.create_foreign_key(
+                "fk_transactions_category_id", "categories", ["category_id"], ["id"]
             )
             batch.add_column(
                 sa.Column("category_confidence", sa.Float(), nullable=True)
