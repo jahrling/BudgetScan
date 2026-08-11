@@ -15,6 +15,9 @@ Running list of work to do. Items added as they surface.
 - [ ] **Negative amounts (income, refunds, credits)** — The QFX parser handles negative `TRNAMT` values, but the UI and budget logic assume all amounts are positive (expenses). Income, refunds, and transfers have no representation. Need to decide on sign convention before relying on imported data for budget math.
   *Surfaced: ASSUMPTIONS.md — money representation*
 
+- [ ] **Quicken automated bank pull / sync / export to disk** — Explore whether Quicken's bank pull (One Step Update) and QFX export can be automated without user interaction. The user currently types a Vault password to start the sync, which makes full automation hard. Questions: (1) Can Quicken be driven via COM automation, command-line flags, or scripting (e.g. AutoHotKey, pywinauto) to trigger One Step Update and then File → Export? (2) Is there a way to cache/bypass the Vault password prompt, or is it per-session by design? (3) If not fully automatable, what's the minimal human-in-the-loop surface — just the password entry, or more? (4) This must run locally (no cloud interaction) since the Vault password and bank credentials can't leave the machine. If the answer is "Vault password is always required," this stays a human-in-the-loop step and the exploration just documents the boundary.
+  *Surfaced: categorization pipeline work (Aug 2026)*
+
 ## Validate
 
 - [ ] **Test QFX import against real bank exports** — Current tests use hand-built fixtures. Real QFX files from Chase, Capital One, etc. each have quirks (inline `<MEMO>` blocks, nested `INVSTMTRS`, variant ACCTID locations). Import a real file from each institution and verify parsing.
