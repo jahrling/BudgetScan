@@ -84,6 +84,7 @@ export interface Transaction {
   quicken_id: string | null;
   receipt_id: number | null;
   status: string;
+  transfer_pair_id: number | null;
   merchant_name: string | null;
   account_name: string | null;
   category_name: string | null;

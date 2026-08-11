@@ -205,7 +205,7 @@ async def rebuild_rules_index(
     stmt = select(MemorizedRule).where(MemorizedRule.status == "active")
     rows = (await session.execute(stmt)).scalars().all()
 
-    store = VectorStore(path=path or _rules_index_path())
+    store = VectorStore(path=path or rules_index_path())
     if not rows:
         store.replace_all([])
         if persist:

@@ -20,6 +20,7 @@ from finance.routers.rules import router as rules_router
 from finance.routers.receipts import router as receipts_router
 from finance.routers.docs import router as docs_router
 from finance.routers.transactions import router as transactions_router
+from finance.routers.transfers import router as transfers_router
 from finance.security import CSRFMiddleware, RateLimitMiddleware
 
 
@@ -47,6 +48,7 @@ app.include_router(ask_router)
 app.include_router(quicken_import_router)
 app.include_router(quicken_export_router)
 app.include_router(rules_router)
+app.include_router(transfers_router)
 app.include_router(docs_router)
 
 

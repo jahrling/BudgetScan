@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   ArrowDown,
+  ArrowLeftRight,
   ArrowUp,
   ArrowUpDown,
   ChevronLeft,
@@ -29,6 +30,7 @@ import {
   useDeleteTransaction,
   useReplaceLineItems,
 } from "../hooks/useTransactions";
+import { useDetectTransfers } from "../hooks/useTransfers";
 import type {
   Merchant,
   LineItemInput,
@@ -83,9 +85,11 @@ export default function Transactions() {
   const { data: accounts = [] } = useAccounts();
   const createTxn = useCreateTransaction();
   const deleteTxn = useDeleteTransaction();
+  const detectMut = useDetectTransfers();
 
   const [addOpen, setAddOpen] = useState(false);
   const [addForm, setAddForm] = useState<AddForm>(emptyAdd);
+  const [detectResult, setDetectResult] = useState<{ new_pairs: number; total_pairs: number } | null>(null);
 
   const [selectedId, setSelectedId] = useState<number | null>(null);
 
@@ -213,6 +217,18 @@ export default function Transactions() {
           <Button
             variant="outline"
             size="sm"
+            title="Detect transfers"
+            disabled={detectMut.isPending}
+            onClick={async () => {
+              const r = await detectMut.mutateAsync({});
+              setDetectResult(r);
+            }}
+          >
+            <ArrowLeftRight className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => setSearchOpen(true)}
             className={hasFilters ? "border-sky-500 text-sky-600" : ""}
           >
@@ -247,6 +263,20 @@ export default function Transactions() {
             className="text-xs text-gray-500 hover:text-gray-700 px-1"
           >
             Clear all
+          </button>
+        </div>
+      )}
+
+      {/* Transfer detection result */}
+      {detectResult && (
+        <div className="rounded-lg border border-sky-200 bg-sky-50 p-2.5 mb-3 flex items-center justify-between">
+          <p className="text-sm text-sky-800">
+            {detectResult.new_pairs > 0
+              ? `Found ${detectResult.new_pairs} new transfer pair${detectResult.new_pairs !== 1 ? "s" : ""} (${detectResult.total_pairs} total).`
+              : `No new transfers found (${detectResult.total_pairs} existing).`}
+          </p>
+          <button onClick={() => setDetectResult(null)} className="text-sky-500 hover:text-sky-700">
+            <X className="h-4 w-4" />
           </button>
         </div>
       )}
@@ -305,18 +335,28 @@ export default function Transactions() {
                       {formatCents(t.amount_cents)}
                     </td>
                     <td className="px-3 py-2">
-                      <span
-                        className={cn(
-                          "inline-block rounded px-1.5 py-0.5 text-[10px] font-medium",
-                          t.status === "split"
-                            ? "bg-green-100 text-green-700"
-                            : t.status === "final"
-                              ? "bg-sky-100 text-sky-700"
-                              : "bg-gray-100 text-gray-600"
+                      <div className="flex items-center gap-1">
+                        <span
+                          className={cn(
+                            "inline-block rounded px-1.5 py-0.5 text-[10px] font-medium",
+                            t.status === "split"
+                              ? "bg-green-100 text-green-700"
+                              : t.status === "final"
+                                ? "bg-sky-100 text-sky-700"
+                                : "bg-gray-100 text-gray-600"
+                          )}
+                        >
+                          {t.status}
+                        </span>
+                        {t.transfer_pair_id && (
+                          <span
+                            className="inline-block rounded px-1.5 py-0.5 text-[10px] font-medium bg-violet-100 text-violet-700"
+                            title={`Transfer pair #${t.transfer_pair_id}`}
+                          >
+                            xfer
+                          </span>
                         )}
-                      >
-                        {t.status}
-                      </span>
+                      </div>
                     </td>
                     <td className="px-2 py-2">
                       <button

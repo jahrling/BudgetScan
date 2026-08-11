@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     ollama_url: str = "http://ollama:11434"
     ollama_base_url: str = ""  # alias accepted from .env; falls back to ollama_url
     ollama_vision_model: str = "qwen2.5vl:7b"
-    ollama_text_model: str = "qwen2.5:7b"
+    ollama_text_model: str = "qwen3.5:latest"
     ollama_embed_model: str = "nomic-embed-text"
     ollama_timeout_seconds: float = 120.0
     receipts_dir: str = "data/receipts"

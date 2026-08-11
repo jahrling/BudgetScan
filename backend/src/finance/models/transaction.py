@@ -34,6 +34,7 @@ class Transaction(Base):
     category_confidence: Mapped[Optional[float]] = mapped_column(nullable=True)
     category_source: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     needs_review: Mapped[bool] = mapped_column(default=True)
+    transfer_pair_id: Mapped[Optional[int]] = mapped_column(nullable=True, index=True)
 
     account: Mapped["Account"] = relationship("Account", lazy="selectin")
     category: Mapped[Optional["Category"]] = relationship("Category", lazy="selectin")

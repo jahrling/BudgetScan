@@ -27,6 +27,7 @@ class TransactionRead(BaseModel):
     quicken_id: str | None
     receipt_id: int | None
     status: str
+    transfer_pair_id: int | None = None
     created_at: datetime
     updated_at: datetime
     merchant_name: str | None = None

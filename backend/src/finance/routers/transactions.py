@@ -71,6 +71,7 @@ async def list_transactions(
                 quicken_id=t.quicken_id,
                 receipt_id=t.receipt_id,
                 status=t.status,
+                transfer_pair_id=t.transfer_pair_id,
                 created_at=t.created_at,
                 updated_at=t.updated_at,
                 merchant_name=t.merchant.name if t.merchant else None,
