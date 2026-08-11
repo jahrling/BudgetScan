@@ -18,5 +18,8 @@ class Merchant(Base):
         ForeignKey("categories.id"), nullable=True
     )
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    resolved_name: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    resolution_source: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    resolution_confidence: Mapped[Optional[float]] = mapped_column(nullable=True)
 
     default_category: Mapped[Optional["Category"]] = relationship("Category", lazy="selectin")

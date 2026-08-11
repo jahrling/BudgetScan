@@ -397,3 +397,113 @@ app, is most of the transaction volume.
   the model does one narrow structured-output task per call; the surrounding Python code makes every
   branching decision) and it's the difference between a debuggable pipeline and a black box when a
   391-rule cascade produces a wrong answer at 11pm and you're the only one who can fix it.
+
+## 11. Rule management: CRUD, suggestions, and Quicken parity
+
+### 11.1 Rule sync is one-way (Quicken → BudgetScan)
+
+The 391 memorized rules flow in via QIF import and are persisted to the `MemorizedRule` table (§2).
+New rules created in BudgetScan stay in BudgetScan — we do not write rules back to Quicken. This is
+deliberate: Quicken's QIF format is an export artifact, not a sync protocol, and trying to push rules
+back would create a fragile bidirectional sync with no real upside.
+
+**Quicken drift risk:** if the user adds new memorized rules in Quicken after the initial import,
+those rules won't appear in BudgetScan until the next QIF import. The existing QIF parser already
+handles this — it dedupes by `payee + category_path` on import, so re-importing a full QIF is safe
+(idempotent insert-or-update). The practical workflow is: periodically re-export from Quicken and
+re-import into BudgetScan to pick up any new Quicken-side rules. Over time, as BudgetScan's own
+rule creation (§11.2-11.3) matures, the user may stop maintaining rules in Quicken entirely.
+
+**Conflict resolution on re-import:** when a QIF re-import contains a rule for a payee that already
+has a `user_created` rule in BudgetScan, the system must **not** silently overwrite or silently
+ignore. Instead, surface the conflict to the user with three options:
+
+1. **User rule wins** — keep the BudgetScan rule, ignore Quicken's version for this payee.
+2. **Quicken overwrites** — update to match Quicken's current mapping; the user-created rule is
+   deactivated (not deleted, for audit trail).
+3. **Keep both** — both rules coexist; user-created rules are checked first during matching.
+
+The conflict UI should show context for both sides: the existing BudgetScan rule (payee, category,
+when created, how many transactions it's matched) and the incoming Quicken rule (payee, category
+path). For Quicken-sourced rules that differ from an existing BudgetScan rule, provide a suggestion
+based on which one has matched more transactions recently, making it easy for the user to make an
+informed choice and easy to undo if they change their mind. Non-conflicting rules (new payees, or
+payees where only a `qif_import` rule exists) are imported/updated automatically with no prompt.
+
+### 11.2 Creating and managing rules in BudgetScan (CRUD)
+
+BudgetScan needs its own first-class rule management, not just passthrough from Quicken. Rules should
+be a full CRUD resource:
+
+- **Create:** user explicitly creates a rule with a payee pattern, target category, and optional
+  amount filter. The UI should make this easy but *never automatic* — see §11.4 below.
+- **Read/List:** browsable, searchable list of all rules (both `qif_import` and `user_created`
+  sources), showing payee pattern, target category, match count, last matched date, and source.
+- **Update:** edit payee pattern, category, or amount filter. Changes take effect on the next
+  categorization pass; previously-categorized transactions are NOT retroactively re-categorized
+  unless the user explicitly requests a re-run.
+- **Delete:** remove a rule. Soft-delete preferred (mark inactive) so the audit trail in
+  `CategorySuggestionLog` remains interpretable.
+
+API surface: standard REST endpoints under `/api/rules/` with the usual CRUD verbs, consistent with
+the existing API patterns in this repo.
+
+### 11.3 Auto-suggested rules (draft rules from Tier 3/4 patterns)
+
+When the categorization pipeline reaches Tier 3 or 4 for a transaction and the user subsequently
+confirms or corrects the category, the system should *draft* a candidate rule — but **not**
+automatically create one. Drafts are held in a `status: "draft"` state on the `MemorizedRule` table
+(new field: `status` enum `"active" | "draft" | "inactive"`).
+
+The suggestion workflow:
+
+1. **Pattern detection runs in the background.** After each confirmed batch of transactions, a
+   lightweight pass looks for payee strings that (a) hit Tier 3/4 at least twice, and (b) were
+   confirmed to the same category both times. These become draft rules.
+2. **Drafts surface in the rule management UI** with a visual distinction (e.g. a "Suggested" badge)
+   and a one-tap "Activate" action. The user can also edit the draft before activating — maybe the
+   payee pattern needs broadening or the category needs adjusting.
+3. **Bulk actions on drafts:** "activate all," "dismiss all," or review one-by-one. Same UX
+   philosophy as the confirm queue (§6) — respect the user's time for a large batch.
+4. **Dismissed drafts are remembered** (marked `"inactive"`) so the same pattern doesn't get
+   re-suggested endlessly.
+
+This replaces the Quicken model of "rules grow only when you explicitly create them in a modal
+dialog" with a smarter loop: the system observes your corrections and proposes rules, but you remain
+in control of which rules actually take effect.
+
+### 11.4 Don't auto-create rules on manual category changes
+
+Quicken's behavior of popping up a "create a memorized rule?" dialog every time the user manually
+changes a transaction's category is a known annoyance. BudgetScan should **not** replicate this.
+
+Instead:
+- **Manual category changes are just that — manual changes.** They update `Transaction.category_id`
+  and `category_source = "user"` for that specific transaction, period. No modal, no interruption.
+- **Pattern detection (§11.3) runs asynchronously**, not in the UI flow of editing a single
+  transaction. If the user re-categorizes the same payee pattern enough times, it'll surface as a
+  draft rule in the rule management screen — but never as an in-your-face dialog blocking the
+  current task.
+- **Explicit rule creation is always available** via the rule management UI (§11.2), for when the
+  user *knows* they want a rule and doesn't want to wait for the suggestion engine.
+
+### 11.5 Rule preview: show what matches before committing
+
+A significant gap in Quicken's rule management: there's no way to preview the effect of a rule
+before (or after) creating it. BudgetScan should provide this as a first-class feature:
+
+- **Preview on create/edit:** when creating or editing a rule, the UI shows a live-updating list of
+  existing transactions that would match the rule's payee pattern (and amount filter, if set). This
+  lets the user see immediately whether a pattern is too broad ("AMAZON" matching both marketplace
+  purchases and AWS charges) or too narrow (missing a variant spelling).
+- **Preview on existing rules:** in the rule list view, each rule shows its current match count, and
+  clicking through shows the actual matched transactions. This is useful for auditing: "is this rule
+  still doing what I intended?"
+- **Impact preview for category changes:** when editing a rule's category, show which already-
+  categorized transactions would be affected if the user chose to re-run categorization — without
+  actually changing anything until explicitly confirmed.
+- **Dry-run mode for bulk operations:** "what would change if I activated these 12 draft rules?" —
+  a summary of affected transactions with before/after categories, reviewable before committing.
+
+This preview capability is genuinely novel relative to Quicken and is one of the clearest value-adds
+of building a custom tool vs. staying in the Quicken ecosystem.

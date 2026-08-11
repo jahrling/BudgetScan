@@ -8,6 +8,7 @@ from finance.models.transaction import Transaction
 from finance.models.line_item import LineItem
 from finance.models.receipt import Receipt
 from finance.models.annotation import Annotation
+from finance.models.memorized_rule import MemorizedRule
 
 __all__ = [
     "Base",
@@ -20,4 +21,5 @@ __all__ = [
     "LineItem",
     "Receipt",
     "Annotation",
+    "MemorizedRule",
 ]

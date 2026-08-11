@@ -80,6 +80,14 @@ What we discovered building BudgetScan — decisions, gotchas, and things that b
 
 ---
 
+## UX Patterns
+
+**Primary actions go above the fold, not below the list.** When a list can be hundreds of items long (transaction import, rule management), the action button (Apply, Confirm, Save) must be in a sticky/fixed position — either top of the list, or pinned to the bottom of the viewport above the nav. Putting it at the end of a 500-row scrollable list means users don't see it, forget about it, or lose patience scrolling to find it. This applies to any "review then commit" flow: the commit control must be always visible.
+
+**Warn before discarding in-progress work.** Any flow where the user has parsed/loaded data but hasn't committed it (import preview, receipt review, rule editing) must guard against accidental navigation — both in-app route changes (`useBlocker`) and browser/tab close (`beforeunload`). Stateless confirm (no server-side staging) means a page refresh or nav-away loses everything with no recovery path.
+
+---
+
 ## Build Process
 
 **Assumptions file is the most valuable doc in the repo.** `ASSUMPTIONS.md` captures every assumption baked into the codebase that hasn't been validated. It's the first place to look when something breaks in production — the answer is usually "we assumed X and X turned out to be wrong." Worth maintaining rigorously.

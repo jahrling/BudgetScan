@@ -16,6 +16,7 @@ from finance.routers.categories import router as categories_router
 from finance.routers.merchants import router as merchants_router
 from finance.routers.quicken import export_router as quicken_export_router
 from finance.routers.quicken import import_router as quicken_import_router
+from finance.routers.rules import router as rules_router
 from finance.routers.receipts import router as receipts_router
 from finance.routers.docs import router as docs_router
 from finance.routers.transactions import router as transactions_router
@@ -45,6 +46,7 @@ app.include_router(annotations_router)
 app.include_router(ask_router)
 app.include_router(quicken_import_router)
 app.include_router(quicken_export_router)
+app.include_router(rules_router)
 app.include_router(docs_router)
 
 

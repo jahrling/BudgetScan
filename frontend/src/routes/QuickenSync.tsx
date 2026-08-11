@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useBlocker } from "react-router-dom";
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
@@ -58,6 +59,31 @@ function defaultActionFor(c: Candidate): RowAction {
 
 export default function QuickenSync() {
   const [activeTab, setActiveTab] = useState<"import" | "export">("import");
+  const [hasUnapplied, setHasUnapplied] = useState(false);
+
+  const blocker = useBlocker(hasUnapplied);
+
+  useEffect(() => {
+    if (blocker.state === "blocked") {
+      const leave = window.confirm(
+        "You have an import in progress that hasn't been applied. Leave anyway?"
+      );
+      if (leave) {
+        blocker.proceed();
+      } else {
+        blocker.reset();
+      }
+    }
+  }, [blocker]);
+
+  useEffect(() => {
+    if (!hasUnapplied) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [hasUnapplied]);
 
   return (
     <Layout>
@@ -94,7 +120,11 @@ export default function QuickenSync() {
         </button>
       </div>
 
-      {activeTab === "import" ? <ImportSection /> : <ExportSection />}
+      {activeTab === "import" ? (
+        <ImportSection onUnappliedChange={setHasUnapplied} />
+      ) : (
+        <ExportSection />
+      )}
     </Layout>
   );
 }
@@ -105,7 +135,11 @@ function formatFromName(name: string): "qfx" | "qif" {
   return name.toLowerCase().endsWith(".qif") ? "qif" : "qfx";
 }
 
-function ImportSection() {
+function ImportSection({
+  onUnappliedChange,
+}: {
+  onUnappliedChange: (v: boolean) => void;
+}) {
   const qc = useQueryClient();
   const { data: accounts = [] } = useAccounts();
   const createAccount = useCreateAccount();
@@ -123,6 +157,11 @@ function ImportSection() {
     skipped: number;
     errors: string[];
   } | null>(null);
+
+  useEffect(() => {
+    const unapplied = parsed !== null && confirmResult === null;
+    onUnappliedChange(unapplied);
+  }, [parsed, confirmResult, onUnappliedChange]);
 
   const uploadMut = useMutation({
     mutationFn: async (file: File) => {
@@ -379,7 +418,7 @@ function CandidateReview({
           onChange={(e) => setCreateMissing(e.target.checked)}
         />
         <Label htmlFor="create-missing" className="text-xs">
-          Create missing categories as flat paths
+          Auto-create categories not yet in BudgetScan
         </Label>
       </div>
 
@@ -399,7 +438,7 @@ function CandidateReview({
       </button>
 
       {expanded && (
-        <div className="space-y-2">
+        <div className="space-y-2 pb-2">
           {parsed.candidates.map((c, i) => (
             <div
               key={i}
@@ -470,30 +509,36 @@ function CandidateReview({
         </div>
       )}
 
-      <div className="flex items-center gap-3">
-        <Button
-          onClick={() => confirmMut.mutate()}
-          disabled={confirmMut.isPending || parsed.candidates.length === 0}
-          className="flex-1"
-        >
-          {confirmMut.isPending ? "Applying…" : "Apply"}
-        </Button>
-      </div>
-      {confirmResult && (
-        <div className="text-sm text-center">
-          {confirmResult.errors.length === 0 ? (
-            <span className="text-emerald-700">
-              Created {confirmResult.created_ids.length}, merged{" "}
-              {confirmResult.merged_ids.length}, skipped{" "}
-              {confirmResult.skipped}.
-            </span>
+      {/* Sticky Apply bar — sits above bottom nav on mobile, bottom of content on desktop */}
+      <div className="fixed bottom-16 left-0 right-0 z-10 bg-white/95 backdrop-blur border-t border-gray-200 px-4 py-3 md:sticky md:bottom-0 md:left-auto md:right-auto md:mt-2 md:rounded-lg md:border md:shadow-sm">
+        <div className="mx-auto max-w-lg md:max-w-none">
+          {confirmResult ? (
+            <div className="text-sm text-center">
+              {confirmResult.errors.length === 0 ? (
+                <span className="text-emerald-700">
+                  Created {confirmResult.created_ids.length}, merged{" "}
+                  {confirmResult.merged_ids.length}, skipped{" "}
+                  {confirmResult.skipped}.
+                </span>
+              ) : (
+                <span className="text-red-700">
+                  Errors: {confirmResult.errors.join("; ")}
+                </span>
+              )}
+            </div>
           ) : (
-            <span className="text-red-700">
-              Errors: {confirmResult.errors.join("; ")}
-            </span>
+            <Button
+              onClick={() => confirmMut.mutate()}
+              disabled={confirmMut.isPending || parsed.candidates.length === 0}
+              className="w-full"
+            >
+              {confirmMut.isPending
+                ? "Applying…"
+                : `Apply ${parsed.candidates.length} transactions`}
+            </Button>
           )}
         </div>
-      )}
+      </div>
     </div>
   );
 }

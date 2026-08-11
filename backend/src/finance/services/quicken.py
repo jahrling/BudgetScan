@@ -39,7 +39,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from finance.models.account import Account
 from finance.models.category import Category
 from finance.models.line_item import LineItem
+from finance.models.memorized_rule import MemorizedRule as MemorizedRuleModel
 from finance.models.transaction import Transaction
+from finance.services.merchant_resolver import normalize_for_matching
 
 logger = logging.getLogger(__name__)
 
@@ -368,6 +370,10 @@ async def import_qif(file_bytes: bytes, session: AsyncSession) -> ParseResult:
                 section_kind = "memorized"
             elif hl.startswith("type:security"):
                 section_kind = "security"
+            elif hl.startswith("type:invst"):
+                section_kind = "security"
+            elif hl.startswith("type:prices"):
+                section_kind = "security"
             elif hl.startswith("type:tag"):
                 section_kind = "tag"
             elif hl in ("option:autoswitch", "clear:autoswitch"):
@@ -521,6 +527,8 @@ def _flush_qif_txn(
     result: ParseResult,
 ) -> None:
     if not record.get("date") and not record.get("amount"):
+        return
+    if not record.get("amount"):
         return
     try:
         posted_at = _parse_qif_date(str(record.get("date", "")))
@@ -921,6 +929,130 @@ async def _get_or_create_uncategorized(session: AsyncSession) -> Category:
         session.add(cat)
         await session.flush()
     return cat
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Memorized rule persistence
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+def _normalize_payee(payee: str) -> str:
+    """Delegate to the canonical normalize function in merchant_resolver."""
+    return normalize_for_matching(payee)
+
+
+@dataclass
+class RuleConflict:
+    """A QIF rule that conflicts with an existing user-created rule."""
+
+    incoming_payee: str
+    incoming_category_path: str
+    existing_rule_id: int
+    existing_category_path: str
+    existing_match_count: int
+
+
+@dataclass
+class RulePersistResult:
+    created: int = 0
+    updated: int = 0
+    unchanged: int = 0
+    conflicts: list[RuleConflict] = field(default_factory=list)
+
+
+async def persist_memorized_rules(
+    session: AsyncSession,
+    parsed_rules: list[MemorizedRule],
+) -> RulePersistResult:
+    """Persist parsed QIF memorized rules to the DB.
+
+    Dedupes by normalized payee. Only touches ``source='qif_import'`` rows.
+    When a user-created rule exists for the same payee, the conflict is
+    returned for the UI to resolve rather than silently overwriting.
+    """
+    result = RulePersistResult()
+    if not parsed_rules:
+        return result
+
+    existing_q = await session.execute(
+        select(MemorizedRuleModel).where(
+            MemorizedRuleModel.status.in_(["active", "draft"])
+        )
+    )
+    existing = list(existing_q.scalars().all())
+    by_norm: dict[str, list[MemorizedRuleModel]] = {}
+    for rule in existing:
+        by_norm.setdefault(rule.normalized_payee, []).append(rule)
+
+    cats = await _all_categories(session)
+    cat_paths = _build_category_paths(cats)
+
+    seen_payees: set[str] = set()
+    for parsed in parsed_rules:
+        if not parsed.payee:
+            continue
+        norm = _normalize_payee(parsed.payee)
+        if norm in seen_payees:
+            continue
+        seen_payees.add(norm)
+
+        category_id = None
+        if parsed.category_path and parsed.category_path in cat_paths:
+            category_id = cat_paths[parsed.category_path].id
+
+        existing_for_payee = by_norm.get(norm, [])
+        user_rules = [r for r in existing_for_payee if r.source == "user_created"]
+        qif_rules = [r for r in existing_for_payee if r.source == "qif_import"]
+
+        if user_rules and parsed.category_path:
+            for ur in user_rules:
+                if ur.category_path != parsed.category_path:
+                    result.conflicts.append(
+                        RuleConflict(
+                            incoming_payee=parsed.payee,
+                            incoming_category_path=parsed.category_path,
+                            existing_rule_id=ur.id,
+                            existing_category_path=ur.category_path,
+                            existing_match_count=0,
+                        )
+                    )
+            result.unchanged += 1
+            continue
+
+        if qif_rules:
+            existing_rule = qif_rules[0]
+            changed = False
+            if parsed.category_path and existing_rule.category_path != parsed.category_path:
+                existing_rule.category_path = parsed.category_path
+                existing_rule.category_id = category_id
+                changed = True
+            if parsed.amount_cents is not None and existing_rule.amount_cents != parsed.amount_cents:
+                existing_rule.amount_cents = parsed.amount_cents
+                changed = True
+            if existing_rule.kind != parsed.kind:
+                existing_rule.kind = parsed.kind
+                changed = True
+            if changed:
+                result.updated += 1
+            else:
+                result.unchanged += 1
+        else:
+            new_rule = MemorizedRuleModel(
+                payee=parsed.payee,
+                normalized_payee=norm,
+                category_path=parsed.category_path or "",
+                category_id=category_id,
+                amount_cents=parsed.amount_cents,
+                transfer_account=parsed.transfer_account,
+                kind=parsed.kind,
+                source="qif_import",
+                status="active",
+            )
+            session.add(new_rule)
+            result.created += 1
+
+    await session.flush()
+    return result
 
 
 # ──────────────────────────────────────────────────────────────────────────────

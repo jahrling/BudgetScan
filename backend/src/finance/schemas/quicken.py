@@ -40,12 +40,28 @@ class MemorizedRuleSchema(BaseModel):
     kind: str = "payment"
 
 
+class RuleConflictSchema(BaseModel):
+    incoming_payee: str
+    incoming_category_path: str
+    existing_rule_id: int
+    existing_category_path: str
+    existing_match_count: int = 0
+
+
+class RulePersistResultSchema(BaseModel):
+    created: int = 0
+    updated: int = 0
+    unchanged: int = 0
+    conflicts: list[RuleConflictSchema] = Field(default_factory=list)
+
+
 class ParseResultSchema(BaseModel):
     candidates: list[TransactionCandidateSchema]
     unmapped_accounts: list[str]
     errors: list[str]
     categories: list[CategoryDefinitionSchema] = Field(default_factory=list)
     memorized_rules: list[MemorizedRuleSchema] = Field(default_factory=list)
+    rule_persist_result: RulePersistResultSchema | None = None
 
 
 class ConfirmAction(BaseModel):

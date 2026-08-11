@@ -226,7 +226,7 @@ export default function ImportPage() {
               onChange={(e) => setCreateMissing(e.target.checked)}
             />
             <Label htmlFor="create-missing">
-              Create missing categories as flat paths
+              Auto-create categories not yet in BudgetScan
             </Label>
           </div>
 

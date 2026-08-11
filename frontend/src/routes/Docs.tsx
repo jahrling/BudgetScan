@@ -38,7 +38,7 @@ function DocViewer({ slug, onBack }: { slug: string; onBack: () => void }) {
         <p className="text-sm text-red-600">Failed to load document.</p>
       )}
       {data && (
-        <article className="prose prose-sm prose-gray max-w-none bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+        <article className="prose prose-sm md:prose-base prose-gray max-w-none bg-white rounded-xl border border-gray-200 p-4 md:p-8 shadow-sm">
           <Markdown>{data.content}</Markdown>
         </article>
       )}

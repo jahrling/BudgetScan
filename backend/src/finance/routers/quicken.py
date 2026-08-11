@@ -15,6 +15,8 @@ from finance.schemas.quicken import (
     ConfirmResponse,
     MemorizedRuleSchema,
     ParseResultSchema,
+    RuleConflictSchema,
+    RulePersistResultSchema,
     SplitCandidateSchema,
     TransactionCandidateSchema,
 )
@@ -103,7 +105,30 @@ async def import_qif(
     data = await file.read()
     result = await svc.import_qif(data, session)
     await svc.match_candidates(session, result.candidates)
-    return _to_schema(result)
+    schema = _to_schema(result)
+
+    if result.memorized_rules:
+        persist_result = await svc.persist_memorized_rules(
+            session, result.memorized_rules
+        )
+        schema.rule_persist_result = RulePersistResultSchema(
+            created=persist_result.created,
+            updated=persist_result.updated,
+            unchanged=persist_result.unchanged,
+            conflicts=[
+                RuleConflictSchema(
+                    incoming_payee=c.incoming_payee,
+                    incoming_category_path=c.incoming_category_path,
+                    existing_rule_id=c.existing_rule_id,
+                    existing_category_path=c.existing_category_path,
+                    existing_match_count=c.existing_match_count,
+                )
+                for c in persist_result.conflicts
+            ],
+        )
+        await session.commit()
+
+    return schema
 
 
 @import_router.post("/confirm", response_model=ConfirmResponse)
