@@ -20,14 +20,17 @@ import logging
 from dataclasses import dataclass
 from datetime import timedelta
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from finance.models.category import Category
+from finance.models.line_item import LineItem
 from finance.models.transaction import Transaction
 
 logger = logging.getLogger(__name__)
 
 _WINDOW_DAYS = 3
+_TRANSFER_CATEGORY_NAME = "Transfer"
 
 
 @dataclass
@@ -51,6 +54,34 @@ class DetectionResult:
     total_pairs: int
 
 
+async def _get_or_create_transfer_category(session: AsyncSession) -> Category:
+    result = await session.execute(
+        select(Category).where(Category.name == _TRANSFER_CATEGORY_NAME)
+    )
+    cat = result.scalar_one_or_none()
+    if cat is None:
+        cat = Category(name=_TRANSFER_CATEGORY_NAME, color="#8b5cf6", icon="arrow-left-right")
+        session.add(cat)
+        await session.flush()
+    return cat
+
+
+async def _assign_transfer_category(
+    session: AsyncSession, txn: Transaction, category_id: int
+) -> None:
+    txn.category_id = category_id
+    txn.category_source = "transfer_detect"
+    txn.category_confidence = 1.0
+    txn.needs_review = False
+
+    li_result = await session.execute(
+        select(LineItem).where(LineItem.transaction_id == txn.id)
+    )
+    items = list(li_result.scalars().all())
+    if len(items) == 1:
+        items[0].category_id = category_id
+
+
 async def detect_transfers(
     session: AsyncSession,
     *,
@@ -61,7 +92,8 @@ async def detect_transfers(
     """Scan transactions for transfer pairs and write ``transfer_pair_id``.
 
     Only considers transactions not already paired.  Returns how many
-    new pairs were found.
+    new pairs were found.  Also assigns the "Transfer" category to both
+    sides of each pair.
     """
     stmt = (
         select(Transaction)
@@ -78,6 +110,7 @@ async def detect_transfers(
 
     paired_ids: set[int] = set()
     new_pairs = 0
+    transfer_cat: Category | None = None
 
     for neg in negatives:
         if neg.id in paired_ids:
@@ -99,8 +132,13 @@ async def detect_transfers(
             pair_id = min(neg.id, pos.id)
 
             if not dry_run:
+                if transfer_cat is None:
+                    transfer_cat = await _get_or_create_transfer_category(session)
+
                 neg.transfer_pair_id = pair_id
                 pos.transfer_pair_id = pair_id
+                await _assign_transfer_category(session, neg, transfer_cat.id)
+                await _assign_transfer_category(session, pos, transfer_cat.id)
 
             paired_ids.add(neg.id)
             paired_ids.add(pos.id)

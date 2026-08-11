@@ -318,11 +318,24 @@ export default function Transactions() {
                       {new Date(t.posted_at).toLocaleDateString()}
                     </td>
                     <td className="px-3 py-2 max-w-[200px]">
-                      <div className="truncate font-medium text-gray-900">
-                        {t.merchant_name || t.description || "—"}
-                      </div>
-                      {t.merchant_name && t.description && t.merchant_name !== t.description && (
-                        <div className="truncate text-xs text-gray-400">{t.description}</div>
+                      {t.transfer_pair_id && t.transfer_account_name ? (
+                        <>
+                          <div className="truncate font-medium text-violet-700">
+                            Transfer {t.amount_cents < 0 ? "→" : "←"} {t.transfer_account_name}
+                          </div>
+                          {t.description && (
+                            <div className="truncate text-xs text-gray-400">{t.description}</div>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <div className="truncate font-medium text-gray-900">
+                            {t.merchant_name || t.description || "—"}
+                          </div>
+                          {t.merchant_name && t.description && t.merchant_name !== t.description && (
+                            <div className="truncate text-xs text-gray-400">{t.description}</div>
+                          )}
+                        </>
                       )}
                     </td>
                     <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">

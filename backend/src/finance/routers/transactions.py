@@ -58,6 +58,27 @@ async def list_transactions(
         sort_by=sort_by,
         sort_dir=sort_dir,
     )
+
+    # Batch-resolve counterpart account names for transfer pairs
+    pair_ids = [t.transfer_pair_id for t in txns if t.transfer_pair_id]
+    counterpart_map: dict[int, str] = {}
+    if pair_ids:
+        partner_q = (
+            select(Transaction)
+            .where(Transaction.transfer_pair_id.in_(pair_ids))
+        )
+        partners = list((await session.execute(partner_q)).scalars().all())
+        by_pair: dict[int, list[Transaction]] = {}
+        for p in partners:
+            by_pair.setdefault(p.transfer_pair_id, []).append(p)
+        for t in txns:
+            if not t.transfer_pair_id:
+                continue
+            group = by_pair.get(t.transfer_pair_id, [])
+            other = next((p for p in group if p.id != t.id), None)
+            if other and other.account:
+                counterpart_map[t.id] = other.account.name
+
     items = []
     for t in txns:
         items.append(
@@ -77,6 +98,7 @@ async def list_transactions(
                 merchant_name=t.merchant.name if t.merchant else None,
                 account_name=t.account.name if t.account else None,
                 category_name=t.category.name if t.category else None,
+                transfer_account_name=counterpart_map.get(t.id),
             )
         )
     return {"items": items, "total": total}

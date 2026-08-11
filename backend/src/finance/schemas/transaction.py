@@ -33,6 +33,7 @@ class TransactionRead(BaseModel):
     merchant_name: str | None = None
     account_name: str | None = None
     category_name: str | None = None
+    transfer_account_name: str | None = None
 
     model_config = {"from_attributes": True}
 
