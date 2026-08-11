@@ -607,7 +607,7 @@ function CandidateReview({
             <div className="text-sm">
               {confirmResult.errors.length === 0 ? (
                 <div className="rounded-md bg-emerald-50 border border-emerald-200 p-3 text-center">
-                  <p className="font-medium text-emerald-800">Import complete</p>
+                  <p className="font-medium text-emerald-800">Apply complete</p>
                   <p className="text-emerald-700 mt-1">
                     Created {confirmResult.created_ids.length}
                     {confirmResult.overwritten_ids.length > 0 && `, overwritten ${confirmResult.overwritten_ids.length}`}
@@ -617,7 +617,7 @@ function CandidateReview({
                 </div>
               ) : (
                 <div className="rounded-md bg-red-50 border border-red-200 p-3">
-                  <p className="font-medium text-red-800">Import finished with errors</p>
+                  <p className="font-medium text-red-800">Apply finished with errors</p>
                   <p className="text-red-700 mt-1">
                     {confirmResult.errors.join("; ")}
                   </p>
@@ -652,6 +652,7 @@ function CandidateReview({
               {confirmMut.isPending
                 ? "Applying… please wait"
                 : `Apply ${parsed.candidates.length} transactions`}
+
             </Button>
           )}
         </div>
