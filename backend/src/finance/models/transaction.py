@@ -7,6 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from finance.models.base import Base
 
 if TYPE_CHECKING:
+    from finance.models.account import Account
     from finance.models.category import Category
     from finance.models.merchant import Merchant
     from finance.models.receipt import Receipt
@@ -34,6 +35,7 @@ class Transaction(Base):
     category_source: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     needs_review: Mapped[bool] = mapped_column(default=True)
 
+    account: Mapped["Account"] = relationship("Account", lazy="selectin")
     category: Mapped[Optional["Category"]] = relationship("Category", lazy="selectin")
     merchant: Mapped[Optional["Merchant"]] = relationship("Merchant", lazy="selectin")
     receipt: Mapped[Optional["Receipt"]] = relationship("Receipt", lazy="selectin")

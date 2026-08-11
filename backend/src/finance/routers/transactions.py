@@ -42,6 +42,8 @@ async def list_transactions(
     account_id: int | None = None,
     status: str | None = None,
     category_id: int | None = None,
+    sort_by: str | None = None,
+    sort_dir: str = "desc",
     session: AsyncSession = Depends(get_session),
 ):
     txns, total = await txn_service.list_transactions(
@@ -53,6 +55,8 @@ async def list_transactions(
         account_id=account_id,
         status=status,
         category_id=category_id,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
     )
     items = []
     for t in txns:
@@ -70,6 +74,8 @@ async def list_transactions(
                 created_at=t.created_at,
                 updated_at=t.updated_at,
                 merchant_name=t.merchant.name if t.merchant else None,
+                account_name=t.account.name if t.account else None,
+                category_name=t.category.name if t.category else None,
             )
         )
     return {"items": items, "total": total}

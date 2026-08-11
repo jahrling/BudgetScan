@@ -30,6 +30,8 @@ class TransactionRead(BaseModel):
     created_at: datetime
     updated_at: datetime
     merchant_name: str | None = None
+    account_name: str | None = None
+    category_name: str | None = None
 
     model_config = {"from_attributes": True}
 

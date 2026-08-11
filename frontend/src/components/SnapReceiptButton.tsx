@@ -91,7 +91,6 @@ export function SnapReceiptButton({
           ref={inputRef}
           type="file"
           accept="image/*"
-          capture="environment"
           className="hidden"
           onChange={onFile}
         />

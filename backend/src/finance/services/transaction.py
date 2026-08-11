@@ -13,6 +13,14 @@ from finance.schemas.transaction import TransactionCreate, TransactionUpdate
 from finance.services.merchant import maybe_update_default_category
 
 
+_SORT_COLUMNS = {
+    "posted_at": Transaction.posted_at,
+    "amount_cents": Transaction.amount_cents,
+    "description": Transaction.description,
+    "status": Transaction.status,
+}
+
+
 async def list_transactions(
     session: AsyncSession,
     *,
@@ -23,6 +31,8 @@ async def list_transactions(
     account_id: int | None = None,
     status: str | None = None,
     category_id: int | None = None,
+    sort_by: str | None = None,
+    sort_dir: str = "desc",
 ) -> tuple[list[Transaction], int]:
     q = select(Transaction)
 
@@ -43,7 +53,9 @@ async def list_transactions(
     count_q = select(func.count()).select_from(q.subquery())
     total = (await session.execute(count_q)).scalar() or 0
 
-    q = q.order_by(Transaction.posted_at.desc()).offset(offset).limit(limit)
+    col = _SORT_COLUMNS.get(sort_by or "", Transaction.posted_at)
+    order = col.asc() if sort_dir == "asc" else col.desc()
+    q = q.order_by(order).offset(offset).limit(limit)
     result = await session.execute(q)
     return list(result.scalars().all()), total
 

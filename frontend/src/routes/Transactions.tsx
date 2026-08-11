@@ -1,10 +1,14 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
   ChevronLeft,
   Plus,
   Search,
   Trash2,
+  X,
 } from "lucide-react";
 import { Layout } from "../components/Layout";
 import { SnapReceiptButton } from "../components/SnapReceiptButton";
@@ -53,6 +57,9 @@ const emptyAdd: AddForm = {
   receipt_id: null,
 };
 
+type SortField = "posted_at" | "amount_cents" | "description" | "status";
+type SortDir = "asc" | "desc";
+
 export default function Transactions() {
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [searchOpen, setSearchOpen] = useState(false);
@@ -61,12 +68,16 @@ export default function Transactions() {
   const [filterAccount, setFilterAccount] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [page, setPage] = useState(0);
-  const pageSize = 20;
+  const [sortBy, setSortBy] = useState<SortField>("posted_at");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const pageSize = 50;
 
   const queryParams: Record<string, string> = {
     ...filters,
     offset: String(page * pageSize),
     limit: String(pageSize),
+    sort_by: sortBy,
+    sort_dir: sortDir,
   };
   const { data, isLoading } = useTransactions(queryParams);
   const { data: accounts = [] } = useAccounts();
@@ -78,7 +89,6 @@ export default function Transactions() {
 
   const [selectedId, setSelectedId] = useState<number | null>(null);
 
-  // Honor ?open=<id> and ?manual=<receipt_id> from receipt flow.
   const [searchParams, setSearchParams] = useSearchParams();
   useEffect(() => {
     const open = searchParams.get("open");
@@ -117,6 +127,27 @@ export default function Transactions() {
     setFilterAccount("");
     setFilterStatus("");
     setFilters({});
+    setPage(0);
+  }
+
+  function removeFilter(key: string) {
+    const next = { ...filters };
+    delete next[key];
+    setFilters(next);
+    if (key === "date_from") setDateFrom("");
+    if (key === "date_to") setDateTo("");
+    if (key === "account_id") setFilterAccount("");
+    if (key === "status") setFilterStatus("");
+    setPage(0);
+  }
+
+  function toggleSort(field: SortField) {
+    if (sortBy === field) {
+      setSortDir(sortDir === "asc" ? "desc" : "asc");
+    } else {
+      setSortBy(field);
+      setSortDir(field === "amount_cents" ? "desc" : "asc");
+    }
     setPage(0);
   }
 
@@ -162,9 +193,20 @@ export default function Transactions() {
   const total = data?.total ?? 0;
   const hasFilters = Object.keys(filters).length > 0;
 
+  function filterLabel(key: string, value: string): string {
+    if (key === "account_id") {
+      const a = accounts.find((a) => String(a.id) === value);
+      return a ? a.name : `Account #${value}`;
+    }
+    if (key === "status") return value;
+    if (key === "date_from") return `From ${new Date(value).toLocaleDateString()}`;
+    if (key === "date_to") return `To ${new Date(value).toLocaleDateString()}`;
+    return `${key}: ${value}`;
+  }
+
   return (
     <Layout>
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-3">
         <h1 className="text-xl font-bold">Transactions</h1>
         <div className="flex gap-2">
           <SnapReceiptButton label="" variant="outline" />
@@ -183,13 +225,30 @@ export default function Transactions() {
         </div>
       </div>
 
+      {/* Active filter chips */}
       {hasFilters && (
-        <button
-          onClick={clearFilters}
-          className="text-xs text-sky-600 mb-3 block"
-        >
-          Clear filters
-        </button>
+        <div className="flex flex-wrap gap-1.5 mb-3">
+          {Object.entries(filters).map(([key, value]) => (
+            <span
+              key={key}
+              className="inline-flex items-center gap-1 rounded-full bg-sky-50 border border-sky-200 px-2.5 py-0.5 text-xs text-sky-700"
+            >
+              {filterLabel(key, value)}
+              <button
+                onClick={() => removeFilter(key)}
+                className="hover:text-sky-900"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+          <button
+            onClick={clearFilters}
+            className="text-xs text-gray-500 hover:text-gray-700 px-1"
+          >
+            Clear all
+          </button>
+        </div>
       )}
 
       {isLoading ? (
@@ -200,23 +259,55 @@ export default function Transactions() {
         </p>
       ) : (
         <>
-          <div className="space-y-2">
-            {items.map((t) => (
-              <button
-                key={t.id}
-                onClick={() => setSelectedId(t.id)}
-                className="w-full text-left bg-white rounded-lg border border-gray-200 p-3 active:bg-gray-50"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium truncate">
-                      {t.merchant_name || t.description || "Transaction"}
-                    </p>
-                    <p className="text-xs text-gray-500">
+          <div className="text-xs text-gray-500 mb-2">
+            {total.toLocaleString()} transactions
+          </div>
+
+          {/* Table */}
+          <div className="overflow-x-auto rounded-lg border border-gray-200">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <SortHeader field="posted_at" label="Date" current={sortBy} dir={sortDir} onSort={toggleSort} />
+                  <th className="px-3 py-2 text-left font-medium text-gray-600 text-xs">Description</th>
+                  <th className="px-3 py-2 text-left font-medium text-gray-600 text-xs">Account</th>
+                  <th className="px-3 py-2 text-left font-medium text-gray-600 text-xs">Category</th>
+                  <SortHeader field="amount_cents" label="Amount" current={sortBy} dir={sortDir} onSort={toggleSort} className="text-right" />
+                  <SortHeader field="status" label="Status" current={sortBy} dir={sortDir} onSort={toggleSort} />
+                  <th className="px-2 py-2 w-8" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {items.map((t) => (
+                  <tr
+                    key={t.id}
+                    onClick={() => setSelectedId(t.id)}
+                    className="hover:bg-gray-50 cursor-pointer"
+                  >
+                    <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">
                       {new Date(t.posted_at).toLocaleDateString()}
+                    </td>
+                    <td className="px-3 py-2 max-w-[200px]">
+                      <div className="truncate font-medium text-gray-900">
+                        {t.merchant_name || t.description || "—"}
+                      </div>
+                      {t.merchant_name && t.description && t.merchant_name !== t.description && (
+                        <div className="truncate text-xs text-gray-400">{t.description}</div>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">
+                      {t.account_name ?? "—"}
+                    </td>
+                    <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">
+                      {t.category_name ?? "—"}
+                    </td>
+                    <td className="px-3 py-2 text-right font-semibold tabular-nums whitespace-nowrap">
+                      {formatCents(t.amount_cents)}
+                    </td>
+                    <td className="px-3 py-2">
                       <span
                         className={cn(
-                          "ml-2 inline-block rounded px-1.5 py-0.5 text-[10px] font-medium",
+                          "inline-block rounded px-1.5 py-0.5 text-[10px] font-medium",
                           t.status === "split"
                             ? "bg-green-100 text-green-700"
                             : t.status === "final"
@@ -226,25 +317,22 @@ export default function Transactions() {
                       >
                         {t.status}
                       </span>
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2 ml-2">
-                    <span className="text-sm font-semibold whitespace-nowrap">
-                      {formatCents(t.amount_cents)}
-                    </span>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDelete(t.id);
-                      }}
-                      className="p-1 text-gray-400 hover:text-red-500"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                </div>
-              </button>
-            ))}
+                    </td>
+                    <td className="px-2 py-2">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDelete(t.id);
+                        }}
+                        className="p-1 text-gray-300 hover:text-red-500"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
 
           {total > pageSize && (
@@ -259,7 +347,7 @@ export default function Transactions() {
               </Button>
               <span className="text-xs text-gray-500">
                 {page * pageSize + 1}–{Math.min((page + 1) * pageSize, total)}{" "}
-                of {total}
+                of {total.toLocaleString()}
               </span>
               <Button
                 variant="outline"
@@ -446,6 +534,43 @@ export default function Transactions() {
   );
 }
 
+function SortHeader({
+  field,
+  label,
+  current,
+  dir,
+  onSort,
+  className,
+}: {
+  field: SortField;
+  label: string;
+  current: SortField;
+  dir: SortDir;
+  onSort: (f: SortField) => void;
+  className?: string;
+}) {
+  const active = current === field;
+  return (
+    <th
+      className={cn(
+        "px-3 py-2 font-medium text-xs cursor-pointer select-none hover:text-gray-900 whitespace-nowrap",
+        active ? "text-gray-900" : "text-gray-600",
+        className,
+      )}
+      onClick={() => onSort(field)}
+    >
+      <span className="inline-flex items-center gap-1">
+        {label}
+        {active ? (
+          dir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+        ) : (
+          <ArrowUpDown className="h-3 w-3 opacity-30" />
+        )}
+      </span>
+    </th>
+  );
+}
+
 function QuickAccountCreator({
   onCreated,
 }: {
@@ -520,7 +645,6 @@ function TransactionDetailView({
     setSplits(null);
   }
 
-  // Pre-fill merchant default category if no splits exist
   const prefilled =
     txn &&
     txn.line_items.length === 1 &&

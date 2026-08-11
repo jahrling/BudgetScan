@@ -85,6 +85,8 @@ export interface Transaction {
   receipt_id: number | null;
   status: string;
   merchant_name: string | null;
+  account_name: string | null;
+  category_name: string | null;
   created_at: string;
   updated_at: string;
 }
