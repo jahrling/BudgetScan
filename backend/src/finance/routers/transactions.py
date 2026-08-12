@@ -182,7 +182,11 @@ class CategorizeRequest(BaseModel):
 
 class CategorizedTransaction(BaseModel):
     transaction_id: int
-    category_id: int | None
+    description: str | None = None
+    amount_cents: int = 0
+    current_category_name: str | None = None
+    category_id: int | None = None
+    category_name: str | None = None
     confidence: float
     source: str
     tier: str
@@ -201,10 +205,10 @@ async def categorize_transactions(
     body: CategorizeRequest,
     session: AsyncSession = Depends(get_session),
 ):
-    """Run the categorization pipeline on uncategorized transactions.
+    """Preview categorization results without applying them.
 
-    If ``transaction_ids`` is provided, only those transactions are processed.
-    Otherwise processes up to ``limit`` transactions that have no category set.
+    Returns suggestions for uncategorized transactions. Use the
+    ``/apply-categories`` endpoint to apply the ones the user confirms.
     """
     embedder = default_embedder()
 
@@ -230,6 +234,11 @@ async def categorize_transactions(
     results: list[CategorizedTransaction] = []
     skipped = 0
 
+    cats_by_id: dict[int, str] = {}
+    all_cats = (await session.execute(select(Category))).scalars().all()
+    for c in all_cats:
+        cats_by_id[c.id] = c.name
+
     for txn in txns:
         if not txn.description:
             skipped += 1
@@ -243,24 +252,18 @@ async def categorize_transactions(
             skip_llm=body.skip_llm,
         )
 
-        txn.category_id = result.category_id
-        txn.category_confidence = result.confidence
-        txn.category_source = result.source
-        txn.needs_review = result.needs_review
-
-        if result.category_id is not None:
-            li_stmt = select(LineItem).where(LineItem.transaction_id == txn.id)
-            li_rows = list((await session.execute(li_stmt)).scalars().all())
-            if len(li_rows) == 1:
-                li_rows[0].category_id = result.category_id
-
-        if result.resolved_merchant and result.resolved_merchant.merchant_id:
-            txn.merchant_id = result.resolved_merchant.merchant_id
+        if result.category_id is None:
+            skipped += 1
+            continue
 
         results.append(
             CategorizedTransaction(
                 transaction_id=txn.id,
+                description=txn.description,
+                amount_cents=txn.amount_cents,
+                current_category_name=cats_by_id.get(txn.category_id) if txn.category_id else None,
                 category_id=result.category_id,
+                category_name=cats_by_id.get(result.category_id) if result.category_id else None,
                 confidence=result.confidence,
                 source=result.source,
                 tier=result.tier,
@@ -269,12 +272,85 @@ async def categorize_transactions(
             )
         )
 
-    await session.commit()
+    await session.rollback()
     return CategorizeResponse(
         results=results,
         processed=len(results),
         skipped=skipped,
     )
+
+
+class ApplyCategoryItem(BaseModel):
+    transaction_id: int
+    category_id: int
+
+
+class ApplyCategoriesRequest(BaseModel):
+    items: list[ApplyCategoryItem]
+
+
+class ApplyCategoriesResponse(BaseModel):
+    applied: int
+    rules_created: int
+
+
+@router.post("/apply-categories", response_model=ApplyCategoriesResponse)
+async def apply_categories(
+    body: ApplyCategoriesRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Apply user-confirmed category assignments from the review modal."""
+    applied = 0
+    rules_created = 0
+
+    for item in body.items:
+        txn = await session.get(Transaction, item.transaction_id)
+        if txn is None:
+            continue
+
+        cat = await session.get(Category, item.category_id)
+        if cat is None:
+            continue
+
+        txn.category_id = item.category_id
+        txn.category_source = "user"
+        txn.category_confidence = 1.0
+        txn.needs_review = False
+
+        li_stmt = select(LineItem).where(LineItem.transaction_id == txn.id)
+        li_rows = list((await session.execute(li_stmt)).scalars().all())
+        if len(li_rows) == 1:
+            li_rows[0].category_id = item.category_id
+
+        if txn.description:
+            category_path = _build_category_path(cat)
+            cleaned = clean_description(txn.description)
+            normalized = normalize_for_matching(cleaned or txn.description)
+            if normalized:
+                rule_stmt = (
+                    select(MemorizedRule)
+                    .where(MemorizedRule.normalized_payee == normalized)
+                    .where(MemorizedRule.status == "active")
+                )
+                existing = (await session.execute(rule_stmt)).scalars().first()
+                if existing:
+                    existing.category_path = category_path
+                    existing.category_id = item.category_id
+                else:
+                    session.add(MemorizedRule(
+                        payee=cleaned or txn.description,
+                        normalized_payee=normalized,
+                        category_path=category_path,
+                        category_id=item.category_id,
+                        source="user_created",
+                        status="active",
+                    ))
+                    rules_created += 1
+
+        applied += 1
+
+    await session.commit()
+    return ApplyCategoriesResponse(applied=applied, rules_created=rules_created)
 
 
 class ConfirmCategoryRequest(BaseModel):

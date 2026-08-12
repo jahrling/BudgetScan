@@ -71,9 +71,13 @@ export function useDeleteTransaction() {
   });
 }
 
-interface CategorizedTransaction {
+export interface CategorizedTransaction {
   transaction_id: number;
+  description: string | null;
+  amount_cents: number;
+  current_category_name: string | null;
   category_id: number | null;
+  category_name: string | null;
   confidence: number;
   source: string;
   tier: string;
@@ -81,20 +85,30 @@ interface CategorizedTransaction {
   merchant_guess: string | null;
 }
 
-interface CategorizeResponse {
+export interface CategorizeResponse {
   results: CategorizedTransaction[];
   processed: number;
   skipped: number;
 }
 
 export function useCategorizeTransactions() {
-  const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: {
       transaction_ids?: number[];
       limit?: number;
       skip_llm?: boolean;
     }) => api.post<CategorizeResponse>("/transactions/categorize", body),
+  });
+}
+
+export function useApplyCategories() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (items: { transaction_id: number; category_id: number }[]) =>
+      api.post<{ applied: number; rules_created: number }>(
+        "/transactions/apply-categories",
+        { items }
+      ),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["transactions"] });
       qc.invalidateQueries({ queryKey: ["budgets"] });

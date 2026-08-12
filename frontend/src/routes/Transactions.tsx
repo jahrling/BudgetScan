@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   ArrowDown,
   ArrowLeftRight,
   ArrowUp,
   ArrowUpDown,
+  Check,
   ChevronLeft,
   Plus,
   Search,
@@ -32,7 +33,9 @@ import {
   useDeleteTransaction,
   useReplaceLineItems,
   useCategorizeTransactions,
+  useApplyCategories,
 } from "../hooks/useTransactions";
+import type { CategorizedTransaction } from "../hooks/useTransactions";
 import { useDetectTransfers } from "../hooks/useTransfers";
 import type {
   Merchant,
@@ -105,7 +108,8 @@ export default function Transactions() {
   const [addOpen, setAddOpen] = useState(false);
   const [addForm, setAddForm] = useState<AddForm>(emptyAdd);
   const [detectResult, setDetectResult] = useState<{ new_pairs: number; total_pairs: number } | null>(null);
-  const [catResult, setCatResult] = useState<{ processed: number; skipped: number; tiers: Record<string, number> } | null>(null);
+  const [catReview, setCatReview] = useState<CategorizedTransaction[] | null>(null);
+  const [catSkipped, setCatSkipped] = useState(0);
 
   const [selectedId, setSelectedId] = useState<number | null>(null);
 
@@ -251,11 +255,8 @@ export default function Transactions() {
             disabled={categorizeMut.isPending}
             onClick={async () => {
               const r = await categorizeMut.mutateAsync({ limit: 200 });
-              const tiers: Record<string, number> = {};
-              for (const res of r.results) {
-                tiers[res.tier] = (tiers[res.tier] || 0) + 1;
-              }
-              setCatResult({ processed: r.processed, skipped: r.skipped, tiers });
+              setCatReview(r.results);
+              setCatSkipped(r.skipped);
             }}
           >
             <Sparkles className="h-4 w-4" />
@@ -328,22 +329,13 @@ export default function Transactions() {
         </div>
       )}
 
-      {/* Categorization result */}
-      {catResult && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 mb-3 flex items-center justify-between">
-          <p className="text-sm text-amber-800">
-            {catResult.processed > 0
-              ? `Categorized ${catResult.processed} transaction${catResult.processed !== 1 ? "s" : ""}` +
-                (Object.keys(catResult.tiers).length > 0
-                  ? ` (${Object.entries(catResult.tiers).map(([t, n]) => `${t}: ${n}`).join(", ")})`
-                  : "") +
-                (catResult.skipped > 0 ? `. ${catResult.skipped} skipped.` : ".")
-              : `No uncategorized transactions found${catResult.skipped > 0 ? ` (${catResult.skipped} skipped)` : ""}.`}
-          </p>
-          <button onClick={() => setCatResult(null)} className="text-amber-500 hover:text-amber-700">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
+      {/* Categorization review modal */}
+      {catReview !== null && (
+        <CategorizationReviewModal
+          results={catReview}
+          skipped={catSkipped}
+          onClose={() => setCatReview(null)}
+        />
       )}
 
       {isLoading ? (
@@ -686,6 +678,204 @@ export default function Transactions() {
         </form>
       </Dialog>
     </Layout>
+  );
+}
+
+const TIER_LABELS: Record<string, string> = {
+  exact: "Exact match",
+  substring: "Substring",
+  embedding: "Embedding",
+  llm: "LLM",
+  merchant_default: "Merchant default",
+  none: "None",
+};
+
+function CategorizationReviewModal({
+  results,
+  skipped,
+  onClose,
+}: {
+  results: CategorizedTransaction[];
+  skipped: number;
+  onClose: () => void;
+}) {
+  const [checked, setChecked] = useState<Set<number>>(() => {
+    const initial = new Set<number>();
+    for (const r of results) {
+      if (r.category_id !== null && r.confidence >= 0.70) {
+        initial.add(r.transaction_id);
+      }
+    }
+    return initial;
+  });
+
+  const applyMut = useApplyCategories();
+  const [applied, setApplied] = useState(false);
+  const [applyResult, setApplyResult] = useState<{ applied: number; rules_created: number } | null>(null);
+
+  const toggle = useCallback((id: number) => {
+    setChecked((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const selectAll = useCallback(() => {
+    setChecked(new Set(results.filter((r) => r.category_id !== null).map((r) => r.transaction_id)));
+  }, [results]);
+
+  const selectNone = useCallback(() => {
+    setChecked(new Set());
+  }, []);
+
+  async function handleApply() {
+    const items = results
+      .filter((r) => checked.has(r.transaction_id) && r.category_id !== null)
+      .map((r) => ({ transaction_id: r.transaction_id, category_id: r.category_id! }));
+    if (items.length === 0) return;
+    const res = await applyMut.mutateAsync(items);
+    setApplyResult(res);
+    setApplied(true);
+  }
+
+  const categorizable = results.filter((r) => r.category_id !== null);
+
+  return (
+    <Dialog open onClose={onClose} className="max-w-2xl">
+      <DialogTitle>Review Auto-Categorization</DialogTitle>
+
+      {applied && applyResult ? (
+        <div className="space-y-3">
+          <div className="rounded-lg border border-green-200 bg-green-50 p-3">
+            <p className="text-sm text-green-800">
+              Applied {applyResult.applied} categor{applyResult.applied !== 1 ? "ies" : "y"}.
+              {applyResult.rules_created > 0 &&
+                ` Created ${applyResult.rules_created} new rule${applyResult.rules_created !== 1 ? "s" : ""} for future matching.`}
+            </p>
+          </div>
+          <div className="flex justify-end">
+            <Button onClick={onClose}>Done</Button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {categorizable.length === 0 ? (
+            <p className="text-sm text-gray-500">
+              No categorization suggestions found
+              {skipped > 0 && ` (${skipped} transaction${skipped !== 1 ? "s" : ""} had no description or could not be matched)`}.
+            </p>
+          ) : (
+            <>
+              <div className="flex items-center justify-between text-xs text-gray-500">
+                <span>
+                  {categorizable.length} suggestion{categorizable.length !== 1 ? "s" : ""}
+                  {skipped > 0 && `, ${skipped} skipped`}
+                </span>
+                <span className="flex gap-2">
+                  <button onClick={selectAll} className="text-sky-600 hover:text-sky-800">All</button>
+                  <button onClick={selectNone} className="text-sky-600 hover:text-sky-800">None</button>
+                </span>
+              </div>
+
+              <div className="max-h-[50vh] overflow-y-auto divide-y divide-gray-100 border border-gray-200 rounded-lg">
+                {categorizable.map((r) => (
+                  <label
+                    key={r.transaction_id}
+                    className={cn(
+                      "flex items-start gap-3 px-3 py-2.5 cursor-pointer hover:bg-gray-50",
+                      checked.has(r.transaction_id) && "bg-sky-50/50",
+                    )}
+                  >
+                    <div className="pt-0.5">
+                      <div
+                        className={cn(
+                          "h-4 w-4 rounded border flex items-center justify-center",
+                          checked.has(r.transaction_id)
+                            ? "bg-sky-500 border-sky-500 text-white"
+                            : "border-gray-300",
+                        )}
+                      >
+                        {checked.has(r.transaction_id) && <Check className="h-3 w-3" />}
+                      </div>
+                      <input
+                        type="checkbox"
+                        className="sr-only"
+                        checked={checked.has(r.transaction_id)}
+                        onChange={() => toggle(r.transaction_id)}
+                      />
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="text-sm font-medium text-gray-900 truncate">
+                          {r.description || `Transaction #${r.transaction_id}`}
+                        </span>
+                        <span className="text-xs text-gray-500 tabular-nums whitespace-nowrap">
+                          {formatCents(r.amount_cents)}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        {r.current_category_name && (
+                          <>
+                            <span className="text-xs text-gray-400">{r.current_category_name}</span>
+                            <span className="text-xs text-gray-300">→</span>
+                          </>
+                        )}
+                        <span className="text-xs font-medium text-sky-700">{r.category_name}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span
+                          className={cn(
+                            "inline-block rounded px-1.5 py-0.5 text-[10px] font-medium",
+                            r.tier === "exact"
+                              ? "bg-green-100 text-green-700"
+                              : r.tier === "substring"
+                                ? "bg-emerald-100 text-emerald-700"
+                                : r.tier === "embedding"
+                                  ? "bg-blue-100 text-blue-700"
+                                  : r.tier === "llm"
+                                    ? "bg-purple-100 text-purple-700"
+                                    : "bg-gray-100 text-gray-600",
+                          )}
+                        >
+                          {TIER_LABELS[r.tier] || r.tier}
+                        </span>
+                        <span className="text-[10px] text-gray-400">
+                          {Math.round(r.confidence * 100)}%
+                        </span>
+                        {r.merchant_guess && (
+                          <span className="text-[10px] text-gray-400 truncate">
+                            ({r.merchant_guess})
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </>
+          )}
+
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            {categorizable.length > 0 && (
+              <Button
+                onClick={handleApply}
+                disabled={checked.size === 0 || applyMut.isPending}
+              >
+                {applyMut.isPending
+                  ? "Applying…"
+                  : `Apply ${checked.size} Selected`}
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+    </Dialog>
   );
 }
 
