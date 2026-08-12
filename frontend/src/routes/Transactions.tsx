@@ -913,17 +913,19 @@ function TransactionDetailView({
         onChange={handleChange}
       />
 
-      {dirty && (
-        <div className="mt-4">
-          <Button
-            onClick={handleSave}
-            disabled={!balanced || !validCategories || replaceMut.isPending}
-            className="w-full"
-          >
-            {replaceMut.isPending ? "Saving…" : "Save Splits"}
-          </Button>
-        </div>
-      )}
+      <div className="mt-4">
+        <Button
+          onClick={handleSave}
+          disabled={!dirty || !balanced || !validCategories || replaceMut.isPending}
+          className="w-full"
+        >
+          {replaceMut.isPending
+            ? "Saving…"
+            : currentSplits.length > 1
+              ? "Save Splits"
+              : "Save"}
+        </Button>
+      </div>
     </Layout>
   );
 }

@@ -238,6 +238,13 @@ async def replace_line_items(
         session.add(li)
 
     txn.status = "split" if len(items) > 1 else "pending"
+    if len(items) == 1:
+        txn.category_id = items[0].category_id
+        txn.category_source = "user"
+        txn.category_confidence = 1.0
+        txn.needs_review = False
+    else:
+        txn.category_id = None
     await session.commit()
 
     if txn.merchant_id:
