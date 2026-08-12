@@ -2,7 +2,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from finance.auth.dependencies import current_user
@@ -208,12 +208,19 @@ async def categorize_transactions(
     """
     embedder = default_embedder()
 
+    uncat_q = select(Category.id).where(Category.name == "Uncategorized")
+    uncat_ids = [r for r in (await session.execute(uncat_q)).scalars().all()]
+
     if body.transaction_ids:
         stmt = select(Transaction).where(Transaction.id.in_(body.transaction_ids))
     else:
+        needs_category = or_(
+            Transaction.category_id.is_(None),
+            Transaction.category_id.in_(uncat_ids) if uncat_ids else False,
+        )
         stmt = (
             select(Transaction)
-            .where(Transaction.category_id.is_(None))
+            .where(needs_category)
             .where(Transaction.description.isnot(None))
             .order_by(Transaction.posted_at.desc())
             .limit(body.limit)
