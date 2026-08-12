@@ -905,6 +905,11 @@ async def _create_from_candidate(
             session.add(i)
         if len(items) > 1:
             txn.status = "split"
+        if len(items) == 1:
+            txn.category_id = items[0].category_id
+            txn.category_source = "qif_import"
+            txn.category_confidence = 1.0
+            txn.needs_review = False
     else:
         uncat = await _get_or_create_uncategorized(session)
         session.add(

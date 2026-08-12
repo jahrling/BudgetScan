@@ -5,6 +5,7 @@ from sqlalchemy import delete as sa_delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from finance.models.account import Account
 from finance.models.category import Category
 from finance.models.line_item import LineItem
 from finance.models.transaction import Transaction
@@ -18,6 +19,8 @@ _SORT_COLUMNS = {
     "amount_cents": Transaction.amount_cents,
     "description": Transaction.description,
     "status": Transaction.status,
+    "account_name": Account.name,
+    "category_name": Category.name,
 }
 
 
@@ -31,10 +34,24 @@ async def list_transactions(
     account_id: int | None = None,
     status: str | None = None,
     category_id: int | None = None,
-    sort_by: str | None = None,
-    sort_dir: str = "desc",
+    sort_specs: list[tuple[str, str]] | None = None,
 ) -> tuple[list[Transaction], int]:
     q = select(Transaction)
+
+    needs_account_join = False
+    needs_category_join = False
+
+    if sort_specs:
+        for col_name, _ in sort_specs:
+            if col_name == "account_name":
+                needs_account_join = True
+            elif col_name == "category_name":
+                needs_category_join = True
+
+    if needs_account_join:
+        q = q.outerjoin(Account, Transaction.account_id == Account.id)
+    if needs_category_join:
+        q = q.outerjoin(Category, Transaction.category_id == Category.id)
 
     if date_from:
         q = q.where(Transaction.posted_at >= date_from)
@@ -53,9 +70,14 @@ async def list_transactions(
     count_q = select(func.count()).select_from(q.subquery())
     total = (await session.execute(count_q)).scalar() or 0
 
-    col = _SORT_COLUMNS.get(sort_by or "", Transaction.posted_at)
-    order = col.asc() if sort_dir == "asc" else col.desc()
-    q = q.order_by(order).offset(offset).limit(limit)
+    if sort_specs:
+        for col_name, direction in sort_specs:
+            col = _SORT_COLUMNS.get(col_name, Transaction.posted_at)
+            q = q.order_by(col.asc() if direction == "asc" else col.desc())
+    else:
+        q = q.order_by(Transaction.posted_at.desc())
+
+    q = q.offset(offset).limit(limit)
     result = await session.execute(q)
     return list(result.scalars().all()), total
 

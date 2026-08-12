@@ -23,6 +23,7 @@ import { MoneyInput, formatCents } from "../components/MoneyInput";
 import { MerchantCombobox } from "../components/MerchantCombobox";
 import { SplitEditor } from "../components/SplitEditor";
 import { useAccounts, useCreateAccount } from "../hooks/useAccounts";
+import { useCategories } from "../hooks/useCategories";
 import {
   useTransactions,
   useTransaction,
@@ -59,8 +60,18 @@ const emptyAdd: AddForm = {
   receipt_id: null,
 };
 
-type SortField = "posted_at" | "amount_cents" | "description" | "status";
+type SortField = "posted_at" | "amount_cents" | "description" | "status" | "account_name" | "category_name";
 type SortDir = "asc" | "desc";
+type SortSpec = { field: SortField; dir: SortDir };
+
+const DEFAULT_DIRS: Record<SortField, SortDir> = {
+  posted_at: "desc",
+  amount_cents: "desc",
+  description: "asc",
+  status: "asc",
+  account_name: "asc",
+  category_name: "asc",
+};
 
 export default function Transactions() {
   const [filters, setFilters] = useState<Record<string, string>>({});
@@ -69,20 +80,21 @@ export default function Transactions() {
   const [dateTo, setDateTo] = useState("");
   const [filterAccount, setFilterAccount] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
+  const [filterCategory, setFilterCategory] = useState("");
   const [page, setPage] = useState(0);
-  const [sortBy, setSortBy] = useState<SortField>("posted_at");
-  const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [sorts, setSorts] = useState<SortSpec[]>([{ field: "posted_at", dir: "desc" }]);
   const pageSize = 50;
 
+  const sortParam = sorts.map((s) => `${s.field}:${s.dir}`).join(",");
   const queryParams: Record<string, string> = {
     ...filters,
     offset: String(page * pageSize),
     limit: String(pageSize),
-    sort_by: sortBy,
-    sort_dir: sortDir,
+    sort: sortParam,
   };
   const { data, isLoading } = useTransactions(queryParams);
   const { data: accounts = [] } = useAccounts();
+  const { data: categories = [] } = useCategories();
   const createTxn = useCreateTransaction();
   const deleteTxn = useDeleteTransaction();
   const detectMut = useDetectTransfers();
@@ -120,6 +132,7 @@ export default function Transactions() {
     if (dateTo) f.date_to = new Date(dateTo + "T23:59:59").toISOString();
     if (filterAccount) f.account_id = filterAccount;
     if (filterStatus) f.status = filterStatus;
+    if (filterCategory) f.category_id = filterCategory;
     setFilters(f);
     setPage(0);
     setSearchOpen(false);
@@ -130,6 +143,7 @@ export default function Transactions() {
     setDateTo("");
     setFilterAccount("");
     setFilterStatus("");
+    setFilterCategory("");
     setFilters({});
     setPage(0);
   }
@@ -142,16 +156,24 @@ export default function Transactions() {
     if (key === "date_to") setDateTo("");
     if (key === "account_id") setFilterAccount("");
     if (key === "status") setFilterStatus("");
+    if (key === "category_id") setFilterCategory("");
     setPage(0);
   }
 
   function toggleSort(field: SortField) {
-    if (sortBy === field) {
-      setSortDir(sortDir === "asc" ? "desc" : "asc");
-    } else {
-      setSortBy(field);
-      setSortDir(field === "amount_cents" ? "desc" : "asc");
-    }
+    setSorts((prev) => {
+      const idx = prev.findIndex((s) => s.field === field);
+      if (idx === 0) {
+        const toggled = { ...prev[0], dir: prev[0].dir === "asc" ? "desc" as SortDir : "asc" as SortDir };
+        return [toggled, ...prev.slice(1)];
+      }
+      if (idx > 0) {
+        const picked = prev[idx];
+        return [{ ...picked, dir: picked.dir === "asc" ? "desc" as SortDir : "asc" as SortDir }, ...prev.filter((_, i) => i !== idx)];
+      }
+      const newSpec: SortSpec = { field, dir: DEFAULT_DIRS[field] };
+      return [newSpec, ...prev].slice(0, 3);
+    });
     setPage(0);
   }
 
@@ -201,6 +223,10 @@ export default function Transactions() {
     if (key === "account_id") {
       const a = accounts.find((a) => String(a.id) === value);
       return a ? a.name : `Account #${value}`;
+    }
+    if (key === "category_id") {
+      const c = categories.find((c) => String(c.id) === value);
+      return c ? c.name : `Category #${value}`;
     }
     if (key === "status") return value;
     if (key === "date_from") return `From ${new Date(value).toLocaleDateString()}`;
@@ -298,12 +324,12 @@ export default function Transactions() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200">
-                  <SortHeader field="posted_at" label="Date" current={sortBy} dir={sortDir} onSort={toggleSort} />
-                  <th className="px-3 py-2 text-left font-medium text-gray-600 text-xs">Description</th>
-                  <th className="px-3 py-2 text-left font-medium text-gray-600 text-xs">Account</th>
-                  <th className="px-3 py-2 text-left font-medium text-gray-600 text-xs">Category</th>
-                  <SortHeader field="amount_cents" label="Amount" current={sortBy} dir={sortDir} onSort={toggleSort} className="text-right" />
-                  <SortHeader field="status" label="Status" current={sortBy} dir={sortDir} onSort={toggleSort} />
+                  <SortHeader field="posted_at" label="Date" sorts={sorts} onSort={toggleSort} />
+                  <SortHeader field="description" label="Description" sorts={sorts} onSort={toggleSort} />
+                  <SortHeader field="account_name" label="Account" sorts={sorts} onSort={toggleSort} />
+                  <SortHeader field="category_name" label="Category" sorts={sorts} onSort={toggleSort} />
+                  <SortHeader field="amount_cents" label="Amount" sorts={sorts} onSort={toggleSort} className="text-right" />
+                  <SortHeader field="status" label="Status" sorts={sorts} onSort={toggleSort} />
                   <th className="px-2 py-2 w-8" />
                 </tr>
               </thead>
@@ -453,6 +479,25 @@ export default function Transactions() {
               </Select>
             </div>
           )}
+          {categories.length > 0 && (
+            <div>
+              <Label>Category</Label>
+              <Select
+                value={filterCategory}
+                onChange={(e) => setFilterCategory(e.target.value)}
+              >
+                <option value="">All categories</option>
+                {categories
+                  .slice()
+                  .sort((a, b) => a.name.localeCompare(b.name))
+                  .map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+              </Select>
+            </div>
+          )}
           <div>
             <Label>Status</Label>
             <Select
@@ -465,11 +510,16 @@ export default function Transactions() {
               <option value="final">Final</option>
             </Select>
           </div>
+          <div>
+            <Label>Sort (up to 3)</Label>
+            <SortBuilder sorts={sorts} onChange={(s) => { setSorts(s); setPage(0); }} />
+          </div>
           <div className="flex justify-end gap-2 pt-2">
             <Button
               variant="outline"
               onClick={() => {
                 clearFilters();
+                setSorts([{ field: "posted_at", dir: "desc" }]);
                 setSearchOpen(false);
               }}
             >
@@ -587,22 +637,111 @@ export default function Transactions() {
   );
 }
 
+const SORT_FIELD_LABELS: Record<SortField, string> = {
+  posted_at: "Date",
+  amount_cents: "Amount",
+  description: "Description",
+  status: "Status",
+  account_name: "Account",
+  category_name: "Category",
+};
+
+function SortBuilder({
+  sorts,
+  onChange,
+}: {
+  sorts: SortSpec[];
+  onChange: (s: SortSpec[]) => void;
+}) {
+  function updateField(idx: number, field: SortField) {
+    const next = sorts.map((s, i) =>
+      i === idx ? { field, dir: DEFAULT_DIRS[field] } : s,
+    );
+    onChange(next);
+  }
+
+  function updateDir(idx: number, dir: SortDir) {
+    onChange(sorts.map((s, i) => (i === idx ? { ...s, dir } : s)));
+  }
+
+  function removeSort(idx: number) {
+    const next = sorts.filter((_, i) => i !== idx);
+    onChange(next.length ? next : [{ field: "posted_at", dir: "desc" }]);
+  }
+
+  function addSort() {
+    const used = new Set(sorts.map((s) => s.field));
+    const available = (Object.keys(SORT_FIELD_LABELS) as SortField[]).find(
+      (f) => !used.has(f),
+    );
+    if (available && sorts.length < 3) {
+      onChange([...sorts, { field: available, dir: DEFAULT_DIRS[available] }]);
+    }
+  }
+
+  const usedFields = new Set(sorts.map((s) => s.field));
+
+  return (
+    <div className="space-y-1.5">
+      {sorts.map((s, idx) => (
+        <div key={idx} className="flex gap-1.5 items-center">
+          <span className="text-[10px] text-gray-400 w-4">{idx + 1}.</span>
+          <select
+            className="flex-1 h-8 rounded-md border border-gray-300 bg-white px-2 text-xs"
+            value={s.field}
+            onChange={(e) => updateField(idx, e.target.value as SortField)}
+          >
+            {(Object.keys(SORT_FIELD_LABELS) as SortField[]).map((f) => (
+              <option key={f} value={f} disabled={usedFields.has(f) && f !== s.field}>
+                {SORT_FIELD_LABELS[f]}
+              </option>
+            ))}
+          </select>
+          <select
+            className="w-16 h-8 rounded-md border border-gray-300 bg-white px-1 text-xs"
+            value={s.dir}
+            onChange={(e) => updateDir(idx, e.target.value as SortDir)}
+          >
+            <option value="asc">A→Z</option>
+            <option value="desc">Z→A</option>
+          </select>
+          {sorts.length > 1 && (
+            <button onClick={() => removeSort(idx)} className="text-gray-400 hover:text-red-500">
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+      ))}
+      {sorts.length < 3 && (
+        <button
+          onClick={addSort}
+          className="text-xs text-sky-600 hover:text-sky-800 font-medium"
+        >
+          + Add sort level
+        </button>
+      )}
+    </div>
+  );
+}
+
 function SortHeader({
   field,
   label,
-  current,
-  dir,
+  sorts,
   onSort,
   className,
 }: {
   field: SortField;
   label: string;
-  current: SortField;
-  dir: SortDir;
+  sorts: SortSpec[];
   onSort: (f: SortField) => void;
   className?: string;
 }) {
-  const active = current === field;
+  const idx = sorts.findIndex((s) => s.field === field);
+  const active = idx >= 0;
+  const dir = active ? sorts[idx].dir : null;
+  const rank = active && sorts.length > 1 ? idx + 1 : null;
+
   return (
     <th
       className={cn(
@@ -615,7 +754,10 @@ function SortHeader({
       <span className="inline-flex items-center gap-1">
         {label}
         {active ? (
-          dir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+          <>
+            {dir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
+            {rank && <span className="text-[9px] text-sky-500 font-bold -ml-0.5">{rank}</span>}
+          </>
         ) : (
           <ArrowUpDown className="h-3 w-3 opacity-30" />
         )}

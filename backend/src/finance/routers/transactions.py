@@ -44,8 +44,21 @@ async def list_transactions(
     category_id: int | None = None,
     sort_by: str | None = None,
     sort_dir: str = "desc",
+    sort: str | None = Query(None, description="Multi-sort: 'col1:asc,col2:desc'"),
     session: AsyncSession = Depends(get_session),
 ):
+    sort_specs: list[tuple[str, str]] | None = None
+    if sort:
+        sort_specs = []
+        for part in sort.split(","):
+            parts = part.strip().split(":")
+            col_name = parts[0]
+            direction = parts[1] if len(parts) > 1 else "asc"
+            if col_name and direction in ("asc", "desc"):
+                sort_specs.append((col_name, direction))
+    elif sort_by:
+        sort_specs = [(sort_by, sort_dir)]
+
     txns, total = await txn_service.list_transactions(
         session,
         offset=offset,
@@ -55,8 +68,7 @@ async def list_transactions(
         account_id=account_id,
         status=status,
         category_id=category_id,
-        sort_by=sort_by,
-        sort_dir=sort_dir,
+        sort_specs=sort_specs,
     )
 
     # Batch-resolve counterpart account names for transfer pairs
@@ -360,3 +372,56 @@ async def confirm_category(
         rule_id=rule_id,
         merchant_updated=merchant_updated,
     )
+
+
+class BackfillResponse(BaseModel):
+    updated: int
+    already_set: int
+
+
+@router.post("/backfill-categories", response_model=BackfillResponse)
+async def backfill_categories(
+    session: AsyncSession = Depends(get_session),
+):
+    """Backfill Transaction.category_id from single-LineItem transactions.
+
+    Fixes transactions imported before category_id was set at the
+    transaction level.
+    """
+    from finance.models.line_item import LineItem as LI
+    from sqlalchemy import func as sqlfunc
+
+    single_item_txns = (
+        select(LI.transaction_id, LI.category_id)
+        .group_by(LI.transaction_id)
+        .having(sqlfunc.count(LI.id) == 1)
+    ).subquery()
+
+    stmt = (
+        select(Transaction)
+        .join(single_item_txns, Transaction.id == single_item_txns.c.transaction_id)
+        .where(Transaction.category_id.is_(None))
+    )
+    txns = list((await session.execute(stmt)).scalars().all())
+
+    updated = 0
+    for txn in txns:
+        li_result = await session.execute(
+            select(LI).where(LI.transaction_id == txn.id).limit(1)
+        )
+        li = li_result.scalar_one_or_none()
+        if li and li.category_id:
+            txn.category_id = li.category_id
+            txn.category_source = txn.category_source or "backfill"
+            txn.needs_review = False
+            updated += 1
+
+    if updated:
+        await session.commit()
+
+    already_set_q = select(sqlfunc.count()).select_from(
+        select(Transaction).where(Transaction.category_id.isnot(None)).subquery()
+    )
+    already_set = (await session.execute(already_set_q)).scalar() or 0
+
+    return BackfillResponse(updated=updated, already_set=already_set)
