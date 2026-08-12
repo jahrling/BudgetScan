@@ -28,6 +28,10 @@ class TransactionRead(BaseModel):
     receipt_id: int | None
     status: str
     transfer_pair_id: int | None = None
+    category_id: int | None = None
+    category_source: str | None = None
+    category_confidence: float | None = None
+    needs_review: bool = True
     created_at: datetime
     updated_at: datetime
     merchant_name: str | None = None

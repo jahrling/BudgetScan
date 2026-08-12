@@ -71,6 +71,59 @@ export function useDeleteTransaction() {
   });
 }
 
+interface CategorizedTransaction {
+  transaction_id: number;
+  category_id: number | null;
+  confidence: number;
+  source: string;
+  tier: string;
+  needs_review: boolean;
+  merchant_guess: string | null;
+}
+
+interface CategorizeResponse {
+  results: CategorizedTransaction[];
+  processed: number;
+  skipped: number;
+}
+
+export function useCategorizeTransactions() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      transaction_ids?: number[];
+      limit?: number;
+      skip_llm?: boolean;
+    }) => api.post<CategorizeResponse>("/transactions/categorize", body),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["transactions"] });
+      qc.invalidateQueries({ queryKey: ["budgets"] });
+    },
+  });
+}
+
+export function useConfirmCategory() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      txnId,
+      category_id,
+      merchant_name,
+    }: {
+      txnId: number;
+      category_id: number;
+      merchant_name?: string | null;
+    }) =>
+      api.post<{ transaction_id: number; category_id: number; rule_id: number | null; merchant_updated: boolean }>(
+        `/transactions/${txnId}/confirm-category`,
+        { category_id, merchant_name }
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["transactions"] });
+    },
+  });
+}
+
 export function useReplaceLineItems() {
   const qc = useQueryClient();
   return useMutation({

@@ -8,6 +8,7 @@ import {
   ChevronLeft,
   Plus,
   Search,
+  Sparkles,
   Trash2,
   X,
 } from "lucide-react";
@@ -30,6 +31,7 @@ import {
   useCreateTransaction,
   useDeleteTransaction,
   useReplaceLineItems,
+  useCategorizeTransactions,
 } from "../hooks/useTransactions";
 import { useDetectTransfers } from "../hooks/useTransfers";
 import type {
@@ -98,10 +100,12 @@ export default function Transactions() {
   const createTxn = useCreateTransaction();
   const deleteTxn = useDeleteTransaction();
   const detectMut = useDetectTransfers();
+  const categorizeMut = useCategorizeTransactions();
 
   const [addOpen, setAddOpen] = useState(false);
   const [addForm, setAddForm] = useState<AddForm>(emptyAdd);
   const [detectResult, setDetectResult] = useState<{ new_pairs: number; total_pairs: number } | null>(null);
+  const [catResult, setCatResult] = useState<{ processed: number; skipped: number; tiers: Record<string, number> } | null>(null);
 
   const [selectedId, setSelectedId] = useState<number | null>(null);
 
@@ -243,6 +247,23 @@ export default function Transactions() {
           <Button
             variant="outline"
             size="sm"
+            title="Auto-categorize uncategorized transactions"
+            disabled={categorizeMut.isPending}
+            onClick={async () => {
+              const r = await categorizeMut.mutateAsync({ limit: 200 });
+              const tiers: Record<string, number> = {};
+              for (const res of r.results) {
+                tiers[res.tier] = (tiers[res.tier] || 0) + 1;
+              }
+              setCatResult({ processed: r.processed, skipped: r.skipped, tiers });
+            }}
+          >
+            <Sparkles className="h-4 w-4" />
+            {categorizeMut.isPending ? " Categorizing…" : ""}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
             title="Detect transfers"
             disabled={detectMut.isPending}
             onClick={async () => {
@@ -302,6 +323,24 @@ export default function Transactions() {
               : `No new transfers found (${detectResult.total_pairs} existing).`}
           </p>
           <button onClick={() => setDetectResult(null)} className="text-sky-500 hover:text-sky-700">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Categorization result */}
+      {catResult && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 mb-3 flex items-center justify-between">
+          <p className="text-sm text-amber-800">
+            {catResult.processed > 0
+              ? `Categorized ${catResult.processed} transaction${catResult.processed !== 1 ? "s" : ""}` +
+                (Object.keys(catResult.tiers).length > 0
+                  ? ` (${Object.entries(catResult.tiers).map(([t, n]) => `${t}: ${n}`).join(", ")})`
+                  : "") +
+                (catResult.skipped > 0 ? `. ${catResult.skipped} skipped.` : ".")
+              : `No uncategorized transactions found${catResult.skipped > 0 ? ` (${catResult.skipped} skipped)` : ""}.`}
+          </p>
+          <button onClick={() => setCatResult(null)} className="text-amber-500 hover:text-amber-700">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -367,8 +406,21 @@ export default function Transactions() {
                     <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">
                       {t.account_name ?? "—"}
                     </td>
-                    <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">
-                      {t.category_name ?? "—"}
+                    <td className="px-3 py-2 text-xs whitespace-nowrap">
+                      {t.category_name ? (
+                        <span className={cn(
+                          t.needs_review && t.category_source !== "user" && t.category_source !== "qif_import"
+                            ? "text-amber-600"
+                            : "text-gray-600"
+                        )}>
+                          {t.category_name}
+                          {t.needs_review && t.category_source !== "user" && t.category_source !== "qif_import" && (
+                            <span className="ml-1 text-[10px]" title={`Auto-categorized (${t.category_source}, ${Math.round((t.category_confidence ?? 0) * 100)}% confidence)`}>?</span>
+                          )}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400">—</span>
+                      )}
                     </td>
                     <td className="px-3 py-2 text-right font-semibold tabular-nums whitespace-nowrap">
                       {formatCents(t.amount_cents)}

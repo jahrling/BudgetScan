@@ -85,6 +85,10 @@ export interface Transaction {
   receipt_id: number | null;
   status: string;
   transfer_pair_id: number | null;
+  category_id: number | null;
+  category_source: string | null;
+  category_confidence: number | null;
+  needs_review: boolean;
   merchant_name: string | null;
   account_name: string | null;
   category_name: string | null;

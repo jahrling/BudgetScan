@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from finance.auth.dependencies import current_user
 from finance.db import get_session
 from finance.models.category import Category
+from finance.models.line_item import LineItem
 from finance.models.memorized_rule import MemorizedRule
 from finance.models.merchant import Merchant
 from finance.models.transaction import Transaction
@@ -105,6 +106,10 @@ async def list_transactions(
                 receipt_id=t.receipt_id,
                 status=t.status,
                 transfer_pair_id=t.transfer_pair_id,
+                category_id=t.category_id,
+                category_source=t.category_source,
+                category_confidence=t.category_confidence,
+                needs_review=t.needs_review,
                 created_at=t.created_at,
                 updated_at=t.updated_at,
                 merchant_name=t.merchant.name if t.merchant else None,
@@ -235,6 +240,12 @@ async def categorize_transactions(
         txn.category_confidence = result.confidence
         txn.category_source = result.source
         txn.needs_review = result.needs_review
+
+        if result.category_id is not None:
+            li_stmt = select(LineItem).where(LineItem.transaction_id == txn.id)
+            li_rows = list((await session.execute(li_stmt)).scalars().all())
+            if len(li_rows) == 1:
+                li_rows[0].category_id = result.category_id
 
         if result.resolved_merchant and result.resolved_merchant.merchant_id:
             txn.merchant_id = result.resolved_merchant.merchant_id
