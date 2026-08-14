@@ -36,8 +36,12 @@ async def client():
     await engine.dispose()
 
 
-async def _create_category(client: AsyncClient, name: str = "Groceries") -> dict:
-    resp = await client.post("/api/categories", json={"name": name})
+async def _create_category(
+    client: AsyncClient, name: str = "Groceries", is_income: bool = False
+) -> dict:
+    resp = await client.post(
+        "/api/categories", json={"name": name, "is_income": is_income}
+    )
     assert resp.status_code == 201
     return resp.json()
 
@@ -205,3 +209,123 @@ async def test_status_with_spending(client: AsyncClient) -> None:
     assert item["spent_cents"] == 2500
     assert item["remaining_cents"] == 37500
     assert item["percent_used"] == pytest.approx(6.2, abs=0.1)
+
+
+# ── Income summary tests ──
+
+
+async def test_income_summary_empty(client: AsyncClient) -> None:
+    resp = await client.get("/api/budgets/income-summary?period=current_month")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total_cents"] == 0
+    assert data["categories"] == []
+
+
+async def test_income_summary_with_data(client: AsyncClient) -> None:
+    salary = await _create_category(client, "Salary", is_income=True)
+    dividends = await _create_category(client, "Dividends", is_income=True)
+
+    factory = client._session_factory  # type: ignore[attr-defined]
+    async with factory() as session:
+        account = Account(name="Checking", type="checking", currency="USD")
+        session.add(account)
+        await session.flush()
+
+        today = date.today()
+        txn = Transaction(
+            account_id=account.id,
+            posted_at=datetime(today.year, today.month, 1, tzinfo=timezone.utc),
+            amount_cents=-500000,
+            status="final",
+        )
+        session.add(txn)
+        await session.flush()
+
+        session.add(LineItem(
+            transaction_id=txn.id,
+            category_id=salary["id"],
+            amount_cents=-500000,
+        ))
+
+        txn2 = Transaction(
+            account_id=account.id,
+            posted_at=datetime(today.year, today.month, 10, tzinfo=timezone.utc),
+            amount_cents=-5000,
+            status="final",
+        )
+        session.add(txn2)
+        await session.flush()
+
+        session.add(LineItem(
+            transaction_id=txn2.id,
+            category_id=dividends["id"],
+            amount_cents=-5000,
+        ))
+        await session.commit()
+
+    resp = await client.get("/api/budgets/income-summary?period=current_month")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total_cents"] == 505000
+    assert len(data["categories"]) == 2
+    assert data["categories"][0]["category_name"] == "Salary"
+    assert data["categories"][0]["amount_cents"] == 500000
+
+
+async def test_spending_suggestions_exclude_income(client: AsyncClient) -> None:
+    groceries = await _create_category(client, "Groceries")
+    salary = await _create_category(client, "Salary", is_income=True)
+
+    factory = client._session_factory  # type: ignore[attr-defined]
+    async with factory() as session:
+        account = Account(name="Checking", type="checking", currency="USD")
+        session.add(account)
+        await session.flush()
+
+        today = date.today()
+        last_month_start = (today.replace(day=1) - timedelta(days=1)).replace(day=1)
+
+        txn1 = Transaction(
+            account_id=account.id,
+            posted_at=datetime(
+                last_month_start.year, last_month_start.month, 15,
+                tzinfo=timezone.utc,
+            ),
+            amount_cents=10000,
+            status="final",
+        )
+        session.add(txn1)
+        await session.flush()
+
+        session.add(LineItem(
+            transaction_id=txn1.id,
+            category_id=groceries["id"],
+            amount_cents=10000,
+        ))
+
+        txn2 = Transaction(
+            account_id=account.id,
+            posted_at=datetime(
+                last_month_start.year, last_month_start.month, 1,
+                tzinfo=timezone.utc,
+            ),
+            amount_cents=-500000,
+            status="final",
+        )
+        session.add(txn2)
+        await session.flush()
+
+        session.add(LineItem(
+            transaction_id=txn2.id,
+            category_id=salary["id"],
+            amount_cents=-500000,
+        ))
+        await session.commit()
+
+    resp = await client.get("/api/budgets/suggestions?months=1")
+    assert resp.status_code == 200
+    suggestions = resp.json()
+    category_ids = [s["category_id"] for s in suggestions]
+    assert groceries["id"] in category_ids
+    assert salary["id"] not in category_ids

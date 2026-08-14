@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { Pencil, Pin, PinOff, Plus, Sparkles, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, DollarSign, Pencil, Pin, PinOff, Plus, Sparkles, Trash2 } from "lucide-react";
 import { Layout } from "../components/Layout";
 import { Button } from "../components/ui/button";
 import { Label } from "../components/ui/label";
@@ -12,11 +12,12 @@ import {
   useBudgetStatus,
   useCreateBudget,
   useDeleteBudget,
+  useIncomeSummary,
   useSpendingSuggestions,
   useUpdateBudget,
 } from "../hooks/useBudgets";
 import { useCategories } from "../hooks/useCategories";
-import type { Budget } from "../types/models";
+import type { Budget, IncomeSummary as IncomeSummaryType } from "../types/models";
 import { cn } from "../lib/utils";
 
 interface FormState {
@@ -72,6 +73,7 @@ export default function Budgets() {
   const { data: status = [] } = useBudgetStatus();
   const { data: categories = [] } = useCategories();
   const { data: suggestions = [] } = useSpendingSuggestions(3);
+  const { data: incomeSummary } = useIncomeSummary();
   const createMut = useCreateBudget();
   const updateMut = useUpdateBudget();
   const deleteMut = useDeleteBudget();
@@ -175,12 +177,17 @@ export default function Budgets() {
         </Button>
       </div>
 
-      {/* Health banner */}
+      {/* Income + Health banner */}
       {budgets.length > 0 && (
-        <HealthBanner
-          totalBudgeted={totalBudgeted}
-          totalSpent={totalSpent}
-        />
+        <>
+          {incomeSummary && incomeSummary.total_cents > 0 && (
+            <IncomeBanner incomeSummary={incomeSummary} totalBudgeted={totalBudgeted} />
+          )}
+          <HealthBanner
+            totalBudgeted={totalBudgeted}
+            totalSpent={totalSpent}
+          />
+        </>
       )}
 
       {isLoading ? (
@@ -403,6 +410,86 @@ function HealthBanner({
           )}
           style={{ width: `${Math.min(ratio * 100, 100)}%` }}
         />
+      </div>
+    </div>
+  );
+}
+
+function IncomeBanner({
+  incomeSummary,
+  totalBudgeted,
+}: {
+  incomeSummary: IncomeSummaryType;
+  totalBudgeted: number;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const net = incomeSummary.total_cents - totalBudgeted;
+  const coversExpenses = net >= 0;
+
+  return (
+    <div
+      className={cn(
+        "rounded-lg border p-3 mb-2",
+        coversExpenses
+          ? "bg-sky-50 border-sky-200"
+          : "bg-amber-50 border-amber-200",
+      )}
+    >
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center justify-between"
+      >
+        <div className="flex items-center gap-1.5">
+          <DollarSign className={cn(
+            "h-4 w-4",
+            coversExpenses ? "text-sky-600" : "text-amber-600",
+          )} />
+          <span className={cn(
+            "text-sm font-medium",
+            coversExpenses ? "text-sky-800" : "text-amber-800",
+          )}>
+            Income this month
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className={cn(
+            "text-sm font-semibold tabular-nums",
+            coversExpenses ? "text-sky-700" : "text-amber-700",
+          )}>
+            {formatCents(incomeSummary.total_cents)}
+          </span>
+          {expanded
+            ? <ChevronUp className="h-4 w-4 text-gray-400" />
+            : <ChevronDown className="h-4 w-4 text-gray-400" />
+          }
+        </div>
+      </button>
+
+      {expanded && (
+        <div className="mt-2 space-y-1">
+          {incomeSummary.categories.map((cat) => (
+            <div
+              key={cat.category_id}
+              className="flex items-center justify-between bg-white/60 rounded-md px-2.5 py-1.5 text-sm"
+            >
+              <span className="text-gray-700">{cat.category_name}</span>
+              <span className="font-medium tabular-nums text-gray-900">
+                {formatCents(cat.amount_cents)}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="mt-2 flex justify-between text-xs">
+        <span className={cn(
+          coversExpenses ? "text-sky-600" : "text-amber-600",
+        )}>
+          {coversExpenses
+            ? `${formatCents(net)} above budgeted expenses`
+            : `${formatCents(Math.abs(net))} short of budgeted expenses`
+          }
+        </span>
       </div>
     </div>
   );

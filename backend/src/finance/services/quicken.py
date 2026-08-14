@@ -770,6 +770,54 @@ async def resolve_category_path(
     return cat
 
 
+async def ensure_parsed_categories(
+    session: AsyncSession,
+    definitions: list[CategoryDefinition],
+) -> int:
+    """Create or update categories from QIF !Type:Cat definitions.
+
+    Processes parents before children so hierarchy is preserved.
+    Returns the number of categories created or updated.
+    """
+    if not definitions:
+        return 0
+
+    defs_sorted = sorted(definitions, key=lambda d: d.name.count(":"))
+
+    cats = await _all_categories(session)
+    paths = _build_category_paths(cats)
+    changed = 0
+
+    for defn in defs_sorted:
+        existing = paths.get(defn.name)
+        if existing is not None:
+            if existing.is_income != defn.is_income:
+                existing.is_income = defn.is_income
+                changed += 1
+            continue
+
+        parts = defn.name.split(":")
+        leaf_name = parts[-1]
+        parent_path = ":".join(parts[:-1]) if len(parts) > 1 else None
+
+        parent_id = None
+        if parent_path and parent_path in paths:
+            parent_id = paths[parent_path].id
+
+        cat = Category(
+            name=leaf_name,
+            parent_id=parent_id,
+            is_income=defn.is_income,
+        )
+        session.add(cat)
+        await session.flush()
+
+        paths[defn.name] = cat
+        changed += 1
+
+    return changed
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Import confirmation
 # ──────────────────────────────────────────────────────────────────────────────

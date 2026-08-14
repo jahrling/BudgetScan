@@ -80,3 +80,50 @@ async def test_cycle_rejected(authed_client: AsyncClient) -> None:
         f"/api/categories/{a['id']}", json={"parent_id": b["id"]}
     )
     assert resp.status_code == 400
+
+
+async def test_is_income_default_false(authed_client: AsyncClient) -> None:
+    resp = await authed_client.post("/api/categories", json={"name": "Food"})
+    assert resp.status_code == 201
+    assert resp.json()["is_income"] is False
+
+
+async def test_create_income_category(authed_client: AsyncClient) -> None:
+    resp = await authed_client.post(
+        "/api/categories", json={"name": "Salary", "is_income": True}
+    )
+    assert resp.status_code == 201
+    assert resp.json()["is_income"] is True
+
+
+async def test_update_is_income(authed_client: AsyncClient) -> None:
+    cat = (
+        await authed_client.post("/api/categories", json={"name": "Misc"})
+    ).json()
+    assert cat["is_income"] is False
+
+    resp = await authed_client.patch(
+        f"/api/categories/{cat['id']}", json={"is_income": True}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["is_income"] is True
+
+
+async def test_income_subcategories(authed_client: AsyncClient) -> None:
+    parent = (
+        await authed_client.post(
+            "/api/categories", json={"name": "Income", "is_income": True}
+        )
+    ).json()
+    child = (
+        await authed_client.post(
+            "/api/categories",
+            json={
+                "name": "Dividends",
+                "parent_id": parent["id"],
+                "is_income": True,
+            },
+        )
+    ).json()
+    assert child["is_income"] is True
+    assert child["parent_id"] == parent["id"]

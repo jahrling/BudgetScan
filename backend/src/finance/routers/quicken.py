@@ -111,6 +111,11 @@ async def import_qif(
     data = await file.read()
     result = await svc.import_qif(data, session)
     await svc.match_candidates(session, result.candidates)
+
+    if result.categories:
+        await svc.ensure_parsed_categories(session, result.categories)
+        await session.commit()
+
     schema = _to_schema(result)
 
     if result.memorized_rules:

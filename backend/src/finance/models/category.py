@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import ForeignKey, String
+from sqlalchemy import Boolean, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from finance.models.base import Base
@@ -18,6 +18,7 @@ class Category(Base):
     name: Mapped[str] = mapped_column(String(128))
     color: Mapped[Optional[str]] = mapped_column(String(7), nullable=True)
     icon: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    is_income: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0", nullable=False)
 
     parent: Mapped[Optional["SelfRef"]] = relationship(
         "Category", remote_side="Category.id", back_populates="children", lazy="selectin"

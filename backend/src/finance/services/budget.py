@@ -143,6 +143,8 @@ async def get_spending_suggestions(
         start = (start - timedelta(days=1)).replace(day=1)
     end = today.replace(day=1) - timedelta(days=1)
 
+    income_ids = await _income_category_ids(session)
+
     result = await session.execute(
         select(
             LineItem.category_id,
@@ -159,6 +161,8 @@ async def get_spending_suggestions(
 
     suggestions = []
     for row in result:
+        if row.category_id in income_ids:
+            continue
         cat = await session.get(Category, row.category_id)
         if cat is None:
             continue
@@ -178,3 +182,52 @@ async def get_spending_suggestions(
 
     suggestions.sort(key=lambda s: s["total_cents"], reverse=True)
     return suggestions
+
+
+async def _income_category_ids(session: AsyncSession) -> set[int]:
+    result = await session.execute(
+        select(Category.id).where(Category.is_income.is_(True))
+    )
+    return {row[0] for row in result}
+
+
+async def get_income_summary(
+    session: AsyncSession, period_start: date, period_end: date
+) -> dict:
+    income_ids = await _income_category_ids(session)
+    if not income_ids:
+        return {"total_cents": 0, "categories": []}
+
+    result = await session.execute(
+        select(
+            LineItem.category_id,
+            func.coalesce(func.sum(LineItem.amount_cents), 0).label("total"),
+            func.count(LineItem.id).label("txn_count"),
+        )
+        .join(Transaction, LineItem.transaction_id == Transaction.id)
+        .where(
+            LineItem.category_id.in_(income_ids),
+            Transaction.posted_at >= period_start,
+            Transaction.posted_at <= period_end,
+        )
+        .group_by(LineItem.category_id)
+    )
+
+    categories = []
+    total = 0
+    for row in result:
+        cat = await session.get(Category, row.category_id)
+        if cat is None:
+            continue
+        categories.append({
+            "category_id": row.category_id,
+            "category_name": cat.name,
+            "category_icon": cat.icon,
+            "category_color": cat.color,
+            "amount_cents": abs(row.total),
+            "txn_count": row.txn_count,
+        })
+        total += abs(row.total)
+
+    categories.sort(key=lambda c: c["amount_cents"], reverse=True)
+    return {"total_cents": total, "categories": categories}

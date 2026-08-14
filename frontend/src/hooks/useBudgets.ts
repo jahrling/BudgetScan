@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
-import type { Budget, BudgetStatusItem } from "../types/models";
+import type { Budget, BudgetStatusItem, IncomeSummary } from "../types/models";
 
 export function useBudgets() {
   return useQuery({
@@ -32,6 +32,14 @@ export function useSpendingSuggestions(months = 3) {
     queryKey: ["budgets", "suggestions", months],
     queryFn: () =>
       api.get<SpendingSuggestion[]>(`/budgets/suggestions?months=${months}`),
+  });
+}
+
+export function useIncomeSummary() {
+  return useQuery({
+    queryKey: ["budgets", "income-summary"],
+    queryFn: () =>
+      api.get<IncomeSummary>("/budgets/income-summary?period=current_month"),
   });
 }
 

@@ -51,3 +51,17 @@ class BudgetStatusItem(BaseModel):
     period_start: date
     period_end: date
     days_remaining: int
+
+
+class IncomeCategoryItem(BaseModel):
+    category_id: int
+    category_name: str
+    category_icon: str | None = None
+    category_color: str | None = None
+    amount_cents: int
+    txn_count: int
+
+
+class IncomeSummary(BaseModel):
+    total_cents: int
+    categories: list[IncomeCategoryItem]

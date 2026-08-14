@@ -4,6 +4,7 @@ export interface Category {
   parent_id: number | null;
   color: string | null;
   icon: string | null;
+  is_income: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -36,6 +37,20 @@ export interface BudgetStatusItem {
   period_start: string;
   period_end: string;
   days_remaining: number;
+}
+
+export interface IncomeCategoryItem {
+  category_id: number;
+  category_name: string;
+  category_icon: string | null;
+  category_color: string | null;
+  amount_cents: number;
+  txn_count: number;
+}
+
+export interface IncomeSummary {
+  total_cents: number;
+  categories: IncomeCategoryItem[];
 }
 
 export interface Account {

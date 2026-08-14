@@ -10,6 +10,7 @@ from finance.schemas.budget import (
     BudgetRead,
     BudgetStatusItem,
     BudgetUpdate,
+    IncomeSummary,
 )
 from finance.services import budget as budget_service
 
@@ -56,6 +57,31 @@ async def spending_suggestions(
     session: AsyncSession = Depends(get_session),
 ):
     return await budget_service.get_spending_suggestions(session, months)
+
+
+@router.get("/income-summary", response_model=IncomeSummary)
+async def income_summary(
+    period: str = Query("current_month"),
+    session: AsyncSession = Depends(get_session),
+):
+    today = date.today()
+    if period == "current_month":
+        start = today.replace(day=1)
+        if today.month == 12:
+            end = today.replace(year=today.year + 1, month=1, day=1) - timedelta(days=1)
+        else:
+            end = today.replace(month=today.month + 1, day=1) - timedelta(days=1)
+    elif period == "current_week":
+        start = today - timedelta(days=today.weekday())
+        end = start + timedelta(days=6)
+    else:
+        start = today.replace(day=1)
+        if today.month == 12:
+            end = today.replace(year=today.year + 1, month=1, day=1) - timedelta(days=1)
+        else:
+            end = today.replace(month=today.month + 1, day=1) - timedelta(days=1)
+
+    return await budget_service.get_income_summary(session, start, end)
 
 
 @router.get("/{budget_id}", response_model=BudgetRead)

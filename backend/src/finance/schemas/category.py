@@ -8,6 +8,7 @@ class CategoryCreate(BaseModel):
     parent_id: int | None = None
     color: str | None = None
     icon: str | None = None
+    is_income: bool = False
 
 
 class CategoryRead(BaseModel):
@@ -16,6 +17,7 @@ class CategoryRead(BaseModel):
     parent_id: int | None
     color: str | None
     icon: str | None
+    is_income: bool
     created_at: datetime
     updated_at: datetime
 
@@ -27,3 +29,4 @@ class CategoryUpdate(BaseModel):
     parent_id: int | None = None
     color: str | None = None
     icon: str | None = None
+    is_income: bool | None = None
