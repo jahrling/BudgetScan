@@ -189,96 +189,98 @@ export default function Home() {
           </div>
         )}
 
-        <div className="space-y-2">
+        <div className="space-y-2 md:grid md:grid-cols-2 md:gap-3 md:space-y-0">
           {top.map((b) => (
             <BudgetCard key={b.budget_id} b={b} />
           ))}
         </div>
       </section>
 
-      {/* Below the fold */}
-      <section className="mt-6">
-        <button
-          type="button"
-          onClick={() => setTxnsOpen((v) => !v)}
-          className="flex w-full items-center justify-between py-2"
-        >
-          <h2 className="text-sm font-semibold text-gray-700">
-            This week’s transactions
-            {weekTxns.data && (
-              <span className="ml-2 text-xs font-normal text-gray-500">
-                {weekTxns.data.items.length}
-              </span>
+      {/* Below the fold — side-by-side on desktop */}
+      <div className="md:grid md:grid-cols-2 md:gap-6 mt-6 mb-24">
+        <section>
+          <button
+            type="button"
+            onClick={() => setTxnsOpen((v) => !v)}
+            className="flex w-full items-center justify-between py-2"
+          >
+            <h2 className="text-sm font-semibold text-gray-700">
+              This week’s transactions
+              {weekTxns.data && (
+                <span className="ml-2 text-xs font-normal text-gray-500">
+                  {weekTxns.data.items.length}
+                </span>
+              )}
+            </h2>
+            {txnsOpen ? (
+              <ChevronUp className="h-4 w-4 text-gray-500" />
+            ) : (
+              <ChevronDown className="h-4 w-4 text-gray-500" />
             )}
-          </h2>
-          {txnsOpen ? (
-            <ChevronUp className="h-4 w-4 text-gray-500" />
-          ) : (
-            <ChevronDown className="h-4 w-4 text-gray-500" />
+          </button>
+          {txnsOpen && (
+            <div className="space-y-1.5">
+              {weekTxns.isLoading && (
+                <div className="h-12 bg-white rounded-lg border border-gray-200 animate-pulse" />
+              )}
+              {weekTxns.data && weekTxns.data.items.length === 0 && (
+                <p className="text-xs text-gray-500 px-1">
+                  Nothing this week yet.
+                </p>
+              )}
+              {weekTxns.data?.items.slice(0, 10).map((t) => (
+                <Link
+                  key={t.id}
+                  to={`/transactions?open=${t.id}`}
+                  className="flex items-center justify-between bg-white rounded-lg border border-gray-200 px-3 py-2"
+                >
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium truncate">
+                      {t.merchant_name ?? t.description ?? "Transaction"}
+                    </div>
+                    <div className="text-[11px] text-gray-500">
+                      {formatRelDate(t.posted_at)}
+                    </div>
+                  </div>
+                  <div className="text-sm font-semibold tabular-nums">
+                    {formatCents(t.amount_cents)}
+                  </div>
+                </Link>
+              ))}
+            </div>
           )}
-        </button>
-        {txnsOpen && (
+        </section>
+
+        <section className="mt-6 md:mt-0">
+          <h2 className="text-sm font-semibold text-gray-700 py-2">
+            Top merchants this period
+          </h2>
+          {monthTxns.isLoading && (
+            <div className="h-12 bg-white rounded-lg border border-gray-200 animate-pulse" />
+          )}
+          {monthTxns.data && topMerchants.length === 0 && (
+            <p className="text-xs text-gray-500 px-1">No spending yet.</p>
+          )}
           <div className="space-y-1.5">
-            {weekTxns.isLoading && (
-              <div className="h-12 bg-white rounded-lg border border-gray-200 animate-pulse" />
-            )}
-            {weekTxns.data && weekTxns.data.items.length === 0 && (
-              <p className="text-xs text-gray-500 px-1">
-                Nothing this week yet.
-              </p>
-            )}
-            {weekTxns.data?.items.slice(0, 10).map((t) => (
-              <Link
-                key={t.id}
-                to={`/transactions?open=${t.id}`}
+            {topMerchants.map((m) => (
+              <div
+                key={m.name}
                 className="flex items-center justify-between bg-white rounded-lg border border-gray-200 px-3 py-2"
               >
                 <div className="min-w-0">
-                  <div className="text-sm font-medium truncate">
-                    {t.merchant_name ?? t.description ?? "Transaction"}
-                  </div>
+                  <div className="text-sm font-medium truncate">{m.name}</div>
                   <div className="text-[11px] text-gray-500">
-                    {formatRelDate(t.posted_at)}
+                    {m.count} {m.count === 1 ? "visit" : "visits"}
                   </div>
                 </div>
                 <div className="text-sm font-semibold tabular-nums">
-                  {formatCents(t.amount_cents)}
+                  {formatCents(m.total)}
                 </div>
-              </Link>
+              </div>
             ))}
           </div>
-        )}
-      </section>
-
-      <section className="mt-6 mb-24">
-        <h2 className="text-sm font-semibold text-gray-700 py-2">
-          Top merchants this period
-        </h2>
-        {monthTxns.isLoading && (
-          <div className="h-12 bg-white rounded-lg border border-gray-200 animate-pulse" />
-        )}
-        {monthTxns.data && topMerchants.length === 0 && (
-          <p className="text-xs text-gray-500 px-1">No spending yet.</p>
-        )}
-        <div className="space-y-1.5">
-          {topMerchants.map((m) => (
-            <div
-              key={m.name}
-              className="flex items-center justify-between bg-white rounded-lg border border-gray-200 px-3 py-2"
-            >
-              <div className="min-w-0">
-                <div className="text-sm font-medium truncate">{m.name}</div>
-                <div className="text-[11px] text-gray-500">
-                  {m.count} {m.count === 1 ? "visit" : "visits"}
-                </div>
-              </div>
-              <div className="text-sm font-semibold tabular-nums">
-                {formatCents(m.total)}
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
+        </section>
+      </div>
 
       <SnapReceiptButton fab label="Snap receipt" />
     </Layout>
