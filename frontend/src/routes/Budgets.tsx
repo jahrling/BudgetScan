@@ -4,6 +4,7 @@ import { Layout } from "../components/Layout";
 import { Button } from "../components/ui/button";
 import { Label } from "../components/ui/label";
 import { Select } from "../components/ui/select";
+import { SegmentedControl } from "../components/ui/segmented-control";
 import { Dialog, DialogTitle } from "../components/ui/dialog";
 import { CategoryPicker } from "../components/CategoryPicker";
 import { MoneyInput, formatCents } from "../components/MoneyInput";
@@ -17,7 +18,7 @@ import {
   useUpdateBudget,
 } from "../hooks/useBudgets";
 import { useCategories } from "../hooks/useCategories";
-import type { Budget, IncomeSummary as IncomeSummaryType } from "../types/models";
+import type { Budget, BudgetStatusItem, IncomeSummary as IncomeSummaryType } from "../types/models";
 import { cn } from "../lib/utils";
 
 interface FormState {
@@ -39,6 +40,11 @@ const emptyForm: FormState = {
   period: "monthly",
   start_date: todayFirstOfMonth(),
 };
+
+const viewOptions: Array<{ value: "plan" | "track"; label: string }> = [
+  { value: "plan", label: "Plan" },
+  { value: "track", label: "Track" },
+];
 
 function healthColor(ratio: number): {
   bg: string;
@@ -78,10 +84,9 @@ export default function Budgets() {
   const updateMut = useUpdateBudget();
   const deleteMut = useDeleteBudget();
 
+  const [view, setView] = useState<"plan" | "track">("plan");
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm);
-
-  // Inline slider edits: budget_id -> new amount
   const [sliderEdits, setSliderEdits] = useState<Record<number, number>>({});
 
   const catMap = new Map(categories.map((c) => [c.id, c.name]));
@@ -91,7 +96,6 @@ export default function Budgets() {
     [suggestions],
   );
 
-  // Compute totals for health banner
   const totalBudgeted = budgets.reduce((sum, b) => {
     const edited = sliderEdits[b.id];
     return sum + (edited !== undefined ? edited : b.amount_cents);
@@ -167,124 +171,147 @@ export default function Budgets() {
     setSliderEdits({});
   }
 
+  const createBudgetFromSuggestion = async (catId: number, cents: number) => {
+    await createMut.mutateAsync({
+      category_id: catId,
+      amount_cents: cents,
+      period: "monthly",
+      start_date: todayFirstOfMonth(),
+    });
+  };
+
+  const existingCategoryIds = new Set(budgets.map((b) => b.category_id));
+
   return (
     <Layout>
+      {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <h1 className="text-xl font-bold">Budgets</h1>
-        <Button size="sm" onClick={openCreate}>
-          <Plus className="h-4 w-4 mr-1" />
-          Add
-        </Button>
-      </div>
-
-      {/* Income + Health banner */}
-      {budgets.length > 0 && (
-        <>
-          {incomeSummary && incomeSummary.total_cents > 0 && (
-            <IncomeBanner incomeSummary={incomeSummary} totalBudgeted={totalBudgeted} />
+        <div className="flex items-center gap-2">
+          <SegmentedControl value={view} onChange={setView} options={viewOptions} />
+          {view === "plan" && (
+            <Button size="sm" onClick={openCreate}>
+              <Plus className="h-4 w-4 mr-1" />
+              Add
+            </Button>
           )}
-          <HealthBanner
-            totalBudgeted={totalBudgeted}
-            totalSpent={totalSpent}
-          />
-        </>
-      )}
+        </div>
+      </div>
 
       {isLoading ? (
         <p className="text-gray-500 text-sm">Loading…</p>
-      ) : budgets.length === 0 ? (
-        <div className="text-center py-8">
-          <p className="text-gray-500 text-sm mb-3">
-            No budgets yet. Create one or auto-budget from spending history.
-          </p>
-          {suggestions.length > 0 && (
-            <AutoBudgetPanel
-              suggestions={suggestions}
-              existingCategoryIds={new Set(budgets.map((b) => b.category_id))}
-              onCreate={async (catId, cents) => {
-                await createMut.mutateAsync({
-                  category_id: catId,
-                  amount_cents: cents,
-                  period: "monthly",
-                  start_date: todayFirstOfMonth(),
-                });
-              }}
-            />
-          )}
-        </div>
-      ) : (
-        <>
-          {/* Auto-budget for categories without budgets */}
-          {suggestions.length > 0 && (
-            <AutoBudgetPanel
-              suggestions={suggestions}
-              existingCategoryIds={new Set(budgets.map((b) => b.category_id))}
-              onCreate={async (catId, cents) => {
-                await createMut.mutateAsync({
-                  category_id: catId,
-                  amount_cents: cents,
-                  period: "monthly",
-                  start_date: todayFirstOfMonth(),
-                });
-              }}
-            />
-          )}
-
-          <div className="space-y-3 mt-3">
-            {budgets.map((b) => {
-              const catName = catMap.get(b.category_id) ?? "Unknown";
-              const st = statusMap.get(b.category_id);
-              const sug = suggestMap.get(b.category_id);
-              const currentAmount =
-                sliderEdits[b.id] !== undefined
-                  ? sliderEdits[b.id]
-                  : b.amount_cents;
-              const isEdited =
-                sliderEdits[b.id] !== undefined &&
-                sliderEdits[b.id] !== b.amount_cents;
-
-              return (
-                <BudgetRow
-                  key={b.id}
-                  budget={b}
-                  catName={catName}
-                  spent={st?.spent_cents ?? 0}
-                  currentAmount={currentAmount}
-                  historicalAvg={sug?.avg_monthly_cents ?? null}
-                  isEdited={isEdited}
-                  onSliderChange={(cents) => handleSliderChange(b.id, cents)}
-                  onSuggest={() => applySuggestion(b)}
-                  onEdit={() => openEdit(b)}
-                  onDelete={() => handleDelete(b.id)}
-                  onTogglePin={() =>
-                    updateMut.mutate({ id: b.id, is_pinned: !b.is_pinned })
-                  }
-                  hasSuggestion={!!sug}
-                />
-              );
-            })}
+      ) : view === "plan" ? (
+        /* ── Plan View ─────────────────────────────────────── */
+        budgets.length === 0 ? (
+          <div className="text-center py-8">
+            <p className="text-gray-500 text-sm mb-3">
+              No budgets yet. Create one or auto-budget from spending history.
+            </p>
+            {suggestions.length > 0 && (
+              <AutoBudgetPanel
+                suggestions={suggestions}
+                existingCategoryIds={existingCategoryIds}
+                onCreate={createBudgetFromSuggestion}
+              />
+            )}
           </div>
+        ) : (
+          <>
+            <div className="md:grid md:grid-cols-3 md:gap-6">
+              <div className="md:col-span-2 space-y-3">
+                {incomeSummary && incomeSummary.total_cents > 0 && (
+                  <IncomeBanner incomeSummary={incomeSummary} totalBudgeted={totalBudgeted} />
+                )}
+                {budgets.map((b) => {
+                  const catName = catMap.get(b.category_id) ?? "Unknown";
+                  const sug = suggestMap.get(b.category_id);
+                  const currentAmount =
+                    sliderEdits[b.id] !== undefined
+                      ? sliderEdits[b.id]
+                      : b.amount_cents;
+                  const isEdited =
+                    sliderEdits[b.id] !== undefined &&
+                    sliderEdits[b.id] !== b.amount_cents;
 
-          {/* Sticky save bar */}
-          {hasPendingEdits && (
-            <div className="fixed bottom-16 left-0 right-0 z-10 bg-white/95 backdrop-blur border-t border-gray-200 px-4 py-3 md:sticky md:bottom-0 md:mt-3">
-              <div className="mx-auto max-w-lg md:max-w-none">
-                <Button
-                  onClick={saveAllEdits}
-                  disabled={updateMut.isPending}
-                  className="w-full"
-                >
-                  {updateMut.isPending
-                    ? "Saving…"
-                    : `Save ${Object.keys(sliderEdits).length} budget changes`}
-                </Button>
+                  return (
+                    <PlanRow
+                      key={b.id}
+                      budget={b}
+                      catName={catName}
+                      currentAmount={currentAmount}
+                      historicalAvg={sug?.avg_monthly_cents ?? null}
+                      isEdited={isEdited}
+                      onSliderChange={(cents) => handleSliderChange(b.id, cents)}
+                      onSuggest={() => applySuggestion(b)}
+                      onEdit={() => openEdit(b)}
+                      onDelete={() => handleDelete(b.id)}
+                      onTogglePin={() =>
+                        updateMut.mutate({ id: b.id, is_pinned: !b.is_pinned })
+                      }
+                      hasSuggestion={!!sug}
+                    />
+                  );
+                })}
               </div>
+
+              {suggestions.length > 0 && (
+                <aside className="mt-4 md:mt-0 md:sticky md:top-6 md:self-start">
+                  <AutoBudgetPanel
+                    suggestions={suggestions}
+                    existingCategoryIds={existingCategoryIds}
+                    onCreate={createBudgetFromSuggestion}
+                  />
+                </aside>
+              )}
             </div>
-          )}
-        </>
+
+            {hasPendingEdits && (
+              <div className="fixed bottom-16 left-0 right-0 z-10 bg-white/95 backdrop-blur border-t border-gray-200 px-4 py-3 md:sticky md:bottom-0 md:mt-3">
+                <div className="mx-auto max-w-lg md:max-w-none">
+                  <Button
+                    onClick={saveAllEdits}
+                    disabled={updateMut.isPending}
+                    className="w-full"
+                  >
+                    {updateMut.isPending
+                      ? "Saving…"
+                      : `Save ${Object.keys(sliderEdits).length} budget changes`}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </>
+        )
+      ) : (
+        /* ── Track View ────────────────────────────────────── */
+        budgets.length === 0 ? (
+          <div className="text-center py-8">
+            <p className="text-gray-500 text-sm">
+              No budgets to track yet — switch to Plan to set up budgets.
+            </p>
+          </div>
+        ) : (
+          <>
+            <HealthBanner totalBudgeted={totalBudgeted} totalSpent={totalSpent} />
+            <div className="md:grid md:grid-cols-2 md:gap-3 space-y-3 md:space-y-0">
+              {budgets.map((b) => {
+                const catName = catMap.get(b.category_id) ?? "Unknown";
+                const st = statusMap.get(b.category_id);
+                return (
+                  <TrackRow
+                    key={b.id}
+                    budget={b}
+                    catName={catName}
+                    statusItem={st ?? null}
+                  />
+                );
+              })}
+            </div>
+          </>
+        )
       )}
 
-      {/* Create/Edit dialog */}
+      {/* Create/Edit dialog (Plan only, but always mounted for transitions) */}
       <Dialog open={modalOpen} onClose={() => setModalOpen(false)}>
         <DialogTitle>{form.id ? "Edit Budget" : "New Budget"}</DialogTitle>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -349,6 +376,8 @@ export default function Budgets() {
     </Layout>
   );
 }
+
+/* ── Sub-components ──────────────────────────────────────────── */
 
 function HealthBanner({
   totalBudgeted,
@@ -495,10 +524,9 @@ function IncomeBanner({
   );
 }
 
-function BudgetRow({
+function PlanRow({
   budget,
   catName,
-  spent,
   currentAmount,
   historicalAvg,
   isEdited,
@@ -511,7 +539,6 @@ function BudgetRow({
 }: {
   budget: Budget;
   catName: string;
-  spent: number;
   currentAmount: number;
   historicalAvg: number | null;
   isEdited: boolean;
@@ -522,11 +549,9 @@ function BudgetRow({
   onTogglePin: () => void;
   hasSuggestion: boolean;
 }) {
-  const pct = currentAmount > 0 ? (spent / currentAmount) * 100 : 0;
   const sliderMax = Math.max(
     currentAmount * 2,
     (historicalAvg ?? 0) * 2,
-    spent * 1.5,
     50000,
   );
   const histPct =
@@ -589,44 +614,32 @@ function BudgetRow({
         </div>
       </div>
 
-      {/* Spent vs budget amounts */}
-      <div className="flex justify-between text-xs text-gray-500 mb-1">
-        <span>{formatCents(spent)} spent</span>
+      {/* Budget amount */}
+      <div className="flex justify-end text-xs mb-1">
         <span className={cn("font-medium", isEdited ? "text-sky-600" : "text-gray-900")}>
           {formatCents(currentAmount)}
         </span>
       </div>
 
-      {/* Progress bar with historical marker */}
-      <div className="relative mb-2">
-        <div className="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden">
-          <div
-            className={cn(
-              "h-full rounded-full transition-all",
-              pct > 100 ? "bg-red-500" : pct > 80 ? "bg-amber-500" : "bg-sky-500",
-            )}
-            style={{ width: `${Math.min(pct, 100)}%` }}
-          />
-        </div>
+      {/* Slider with historical marker */}
+      <div className="relative mb-1">
+        <input
+          type="range"
+          min={0}
+          max={sliderMax}
+          step={500}
+          value={currentAmount}
+          onChange={(e) => onSliderChange(Number(e.target.value))}
+          className="w-full h-1.5 accent-sky-500 cursor-pointer"
+        />
         {histPct !== null && histPct <= 100 && (
           <div
-            className="absolute top-0 h-2.5 w-0.5 bg-gray-400"
-            style={{ left: `${histPct}%` }}
+            className="absolute bottom-0 h-1.5 w-0.5 bg-gray-400 pointer-events-none"
             title={`3-mo avg: ${formatCents(historicalAvg!)}`}
+            style={{ left: `${histPct}%` }}
           />
         )}
       </div>
-
-      {/* Slider */}
-      <input
-        type="range"
-        min={0}
-        max={sliderMax}
-        step={500}
-        value={currentAmount}
-        onChange={(e) => onSliderChange(Number(e.target.value))}
-        className="w-full h-1.5 accent-sky-500 cursor-pointer"
-      />
 
       {/* Historical comparison */}
       <div className="flex justify-between text-[11px] text-gray-400 mt-0.5">
@@ -636,12 +649,83 @@ function BudgetRow({
             3-mo avg: {formatCents(historicalAvg)}
             {currentAmount < historicalAvg && (
               <span className="text-amber-500 ml-1">
-                ({Math.round(((historicalAvg - currentAmount) / historicalAvg) * 100)}% below)
+                budgeting {Math.round(((historicalAvg - currentAmount) / historicalAvg) * 100)}% below 3-mo avg
               </span>
             )}
           </span>
         )}
         <span>{formatCents(sliderMax)}</span>
+      </div>
+    </div>
+  );
+}
+
+function TrackRow({
+  budget,
+  catName,
+  statusItem,
+}: {
+  budget: Budget;
+  catName: string;
+  statusItem: BudgetStatusItem | null;
+}) {
+  const spent = statusItem?.spent_cents ?? 0;
+  const budgeted = statusItem?.budgeted_cents ?? budget.amount_cents;
+  const remaining = statusItem?.remaining_cents ?? budgeted;
+  const pctUsed = statusItem?.percent_used ?? 0;
+  const daysLeft = statusItem?.days_remaining ?? 0;
+  const pctBar = budgeted > 0 ? (spent / budgeted) * 100 : 0;
+
+  return (
+    <div className="bg-white rounded-lg border border-gray-200 p-3">
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <h3 className="font-medium text-sm">{catName}</h3>
+          {budget.is_pinned && (
+            <Pin className="h-3 w-3 text-sky-500 fill-sky-500" />
+          )}
+        </div>
+        <span className="text-[11px] text-gray-400">{daysLeft}d left</span>
+      </div>
+
+      {/* Progress bar */}
+      <div className="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden mb-2">
+        <div
+          className={cn(
+            "h-full rounded-full transition-all",
+            pctBar > 100 ? "bg-red-500" : pctBar > 80 ? "bg-amber-500" : "bg-sky-500",
+          )}
+          style={{ width: `${Math.min(pctBar, 100)}%` }}
+        />
+      </div>
+
+      {/* Amounts row */}
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-gray-500">
+          {formatCents(spent)} of {formatCents(budgeted)}
+        </span>
+        <div className="flex items-center gap-2">
+          <span
+            className={cn(
+              "font-medium tabular-nums",
+              remaining < 0 ? "text-red-600" : "text-gray-900",
+            )}
+          >
+            {formatCents(remaining)} left
+          </span>
+          <span
+            className={cn(
+              "text-[10px] font-medium px-1.5 py-0.5 rounded-full",
+              pctBar > 100
+                ? "bg-red-100 text-red-700"
+                : pctBar > 80
+                  ? "bg-amber-100 text-amber-700"
+                  : "bg-emerald-100 text-emerald-700",
+            )}
+          >
+            {Math.round(pctUsed)}%
+          </span>
+        </div>
       </div>
     </div>
   );
