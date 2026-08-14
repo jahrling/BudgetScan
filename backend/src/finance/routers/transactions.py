@@ -519,3 +519,96 @@ async def backfill_categories(
     already_set = (await session.execute(already_set_q)).scalar() or 0
 
     return BackfillResponse(updated=updated, already_set=already_set)
+
+
+class BootstrapSummaryItem(BaseModel):
+    tier: str
+    count: int
+
+
+class BootstrapResponse(BaseModel):
+    applied: int
+    flagged_for_review: int
+    unmatched: int
+    total: int
+    by_tier: list[BootstrapSummaryItem]
+
+
+@router.post("/bootstrap-categories", response_model=BootstrapResponse)
+async def bootstrap_categories(
+    session: AsyncSession = Depends(get_session),
+):
+    """One-time bulk pass: run all uncategorized transactions through the
+    deterministic tiers (exact, substring, embedding) and auto-apply
+    high-confidence matches.  No LLM calls are made.
+    """
+    from collections import Counter
+
+    embedder = default_embedder()
+
+    uncat_q = select(Category.id).where(Category.name == "Uncategorized")
+    uncat_ids = list((await session.execute(uncat_q)).scalars().all())
+
+    needs_category = or_(
+        Transaction.category_id.is_(None),
+        Transaction.category_id.in_(uncat_ids) if uncat_ids else False,
+    )
+    stmt = (
+        select(Transaction)
+        .where(needs_category)
+        .where(Transaction.description.isnot(None))
+    )
+    txns = list((await session.execute(stmt)).scalars().all())
+
+    applied = 0
+    flagged = 0
+    unmatched = 0
+    tier_counts: Counter[str] = Counter()
+
+    _AUTO_THRESHOLD = 0.92
+
+    for txn in txns:
+        if not txn.description:
+            unmatched += 1
+            continue
+
+        result = await categorize(
+            session,
+            txn.description,
+            txn.amount_cents,
+            embedder=embedder,
+            skip_llm=True,
+        )
+
+        if result.category_id is None:
+            unmatched += 1
+            continue
+
+        tier_counts[result.tier] += 1
+
+        if result.confidence >= _AUTO_THRESHOLD:
+            txn.category_id = result.category_id
+            txn.category_source = f"bootstrap:{result.tier}"
+            txn.category_confidence = result.confidence
+            txn.needs_review = False
+            applied += 1
+        else:
+            txn.category_id = result.category_id
+            txn.category_source = f"bootstrap:{result.tier}"
+            txn.category_confidence = result.confidence
+            txn.needs_review = True
+            flagged += 1
+
+    if applied or flagged:
+        await session.commit()
+
+    return BootstrapResponse(
+        applied=applied,
+        flagged_for_review=flagged,
+        unmatched=unmatched,
+        total=len(txns),
+        by_tier=[
+            BootstrapSummaryItem(tier=t, count=c)
+            for t, c in tier_counts.most_common()
+        ],
+    )
