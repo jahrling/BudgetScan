@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { ChevronRight, Pencil, Plus, Trash2 } from "lucide-react";
+import { ChevronRight, Database, Pencil, Plus, Trash2 } from "lucide-react";
+import { useMutation } from "@tanstack/react-query";
 import { Layout } from "../components/Layout";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -12,6 +13,7 @@ import {
   useDeleteCategory,
   useUpdateCategory,
 } from "../hooks/useCategories";
+import { api } from "../lib/api";
 import type { Category } from "../types/models";
 import { cn } from "../lib/utils";
 
@@ -32,6 +34,9 @@ export default function Categories() {
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const reindexMut = useMutation({
+    mutationFn: () => api.post<{ indexed: number }>("/rules/reindex", {}),
+  });
 
   function openCreate(parentId: number | null = null) {
     setForm({ name: "", parent_id: parentId });
@@ -175,6 +180,37 @@ export default function Categories() {
           {renderTree(null, 0)}
         </div>
       )}
+
+      {/* Search index management */}
+      <div className="mt-6 rounded-lg border border-gray-200 bg-white p-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-gray-700">Search index</p>
+            <p className="text-xs text-gray-500">
+              Rebuild the embedding index used for smart categorization
+            </p>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => reindexMut.mutate()}
+            disabled={reindexMut.isPending}
+          >
+            <Database className="h-4 w-4 mr-1" />
+            {reindexMut.isPending ? "Rebuilding…" : "Rebuild"}
+          </Button>
+        </div>
+        {reindexMut.isSuccess && (
+          <p className="text-xs text-emerald-600 mt-2">
+            Indexed {reindexMut.data.indexed} rules
+          </p>
+        )}
+        {reindexMut.isError && (
+          <p className="text-xs text-red-600 mt-2">
+            Failed to rebuild index. Is Ollama running?
+          </p>
+        )}
+      </div>
 
       <Dialog open={modalOpen} onClose={() => setModalOpen(false)}>
         <DialogTitle>{form.id ? "Edit Category" : "New Category"}</DialogTitle>
