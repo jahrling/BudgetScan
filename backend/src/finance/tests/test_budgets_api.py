@@ -273,7 +273,7 @@ async def test_income_summary_with_data(client: AsyncClient) -> None:
     assert data["categories"][0]["amount_cents"] == 500000
 
 
-async def test_spending_suggestions_exclude_income(client: AsyncClient) -> None:
+async def test_spending_suggestions_include_income_sorted_by_abs(client: AsyncClient) -> None:
     groceries = await _create_category(client, "Groceries")
     salary = await _create_category(client, "Salary", is_income=True)
 
@@ -328,4 +328,10 @@ async def test_spending_suggestions_exclude_income(client: AsyncClient) -> None:
     suggestions = resp.json()
     category_ids = [s["category_id"] for s in suggestions]
     assert groceries["id"] in category_ids
-    assert salary["id"] not in category_ids
+    assert salary["id"] in category_ids
+
+    salary_sug = next(s for s in suggestions if s["category_id"] == salary["id"])
+    assert salary_sug["is_income"] is True
+    assert salary_sug["avg_monthly_cents"] == 500000
+
+    assert suggestions[0]["category_id"] == salary["id"]

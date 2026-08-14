@@ -658,6 +658,7 @@ function AutoBudgetPanel({
     avg_monthly_cents: number;
     suggested_cents: number;
     txn_count: number;
+    is_income: boolean;
   }>;
   existingCategoryIds: Set<number>;
   onCreate: (categoryId: number, cents: number) => Promise<void>;
@@ -720,6 +721,11 @@ function AutoBudgetPanel({
             <div className="min-w-0">
               <span className="text-sm font-medium truncate block">
                 {s.category_name}
+                {s.is_income && (
+                  <span className="ml-1.5 text-[10px] font-medium text-emerald-600 bg-emerald-50 px-1 py-0.5 rounded">
+                    income
+                  </span>
+                )}
               </span>
               <span className="text-[11px] text-gray-400">
                 avg {formatCents(s.avg_monthly_cents)}/mo · {s.txn_count} txns

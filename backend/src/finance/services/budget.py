@@ -161,12 +161,11 @@ async def get_spending_suggestions(
 
     suggestions = []
     for row in result:
-        if row.category_id in income_ids:
-            continue
         cat = await session.get(Category, row.category_id)
         if cat is None:
             continue
-        avg = row.total // months
+        is_income = row.category_id in income_ids
+        avg = abs(row.total) // months
         rounded = ((avg + 499) // 500) * 500
         if rounded < 500:
             rounded = 500
@@ -178,9 +177,10 @@ async def get_spending_suggestions(
             "total_cents": row.total,
             "months": months,
             "txn_count": row.txn_count,
+            "is_income": is_income,
         })
 
-    suggestions.sort(key=lambda s: s["total_cents"], reverse=True)
+    suggestions.sort(key=lambda s: s["avg_monthly_cents"], reverse=True)
     return suggestions
 
 

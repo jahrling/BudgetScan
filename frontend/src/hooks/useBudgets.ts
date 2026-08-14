@@ -25,6 +25,7 @@ export interface SpendingSuggestion {
   total_cents: number;
   months: number;
   txn_count: number;
+  is_income: boolean;
 }
 
 export function useSpendingSuggestions(months = 3) {
