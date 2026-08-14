@@ -84,12 +84,16 @@ export default function Budgets() {
   const updateMut = useUpdateBudget();
   const deleteMut = useDeleteBudget();
 
-  const [view, setView] = useState<"plan" | "track">("plan");
+  const [view, setView] = useState<"plan" | "track">("track");
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [sliderEdits, setSliderEdits] = useState<Record<number, number>>({});
 
   const catMap = new Map(categories.map((c) => [c.id, c.name]));
+  const incomeCatIds = useMemo(
+    () => new Set(categories.filter((c) => c.is_income).map((c) => c.id)),
+    [categories],
+  );
   const statusMap = new Map(status.map((s) => [s.category_id, s]));
   const suggestMap = useMemo(
     () => new Map(suggestions.map((s) => [s.category_id, s])),
@@ -303,6 +307,7 @@ export default function Budgets() {
                     budget={b}
                     catName={catName}
                     statusItem={st ?? null}
+                    isIncome={incomeCatIds.has(b.category_id)}
                   />
                 );
               })}
@@ -664,10 +669,12 @@ function TrackRow({
   budget,
   catName,
   statusItem,
+  isIncome,
 }: {
   budget: Budget;
   catName: string;
   statusItem: BudgetStatusItem | null;
+  isIncome: boolean;
 }) {
   const spent = statusItem?.spent_cents ?? 0;
   const budgeted = statusItem?.budgeted_cents ?? budget.amount_cents;
@@ -675,6 +682,38 @@ function TrackRow({
   const pctUsed = statusItem?.percent_used ?? 0;
   const daysLeft = statusItem?.days_remaining ?? 0;
   const pctBar = budgeted > 0 ? (spent / budgeted) * 100 : 0;
+
+  if (isIncome) {
+    return (
+      <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-3">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <h3 className="font-medium text-sm text-emerald-900">{catName}</h3>
+            <span className="text-[10px] font-medium text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded-full">
+              income
+            </span>
+          </div>
+          <span className="text-[11px] text-emerald-500">{daysLeft}d left</span>
+        </div>
+
+        <div className="w-full bg-emerald-100 rounded-full h-2.5 overflow-hidden mb-2">
+          <div
+            className="h-full rounded-full transition-all bg-emerald-500"
+            style={{ width: `${Math.min(pctBar, 100)}%` }}
+          />
+        </div>
+
+        <div className="flex items-center justify-between text-xs">
+          <span className="text-emerald-600">
+            {formatCents(spent)} of {formatCents(budgeted)} received
+          </span>
+          <span className="font-medium tabular-nums text-emerald-700">
+            {Math.round(pctUsed)}%
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-3">
@@ -688,7 +727,6 @@ function TrackRow({
         <span className="text-[11px] text-gray-400">{daysLeft}d left</span>
       </div>
 
-      {/* Progress bar */}
       <div className="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden mb-2">
         <div
           className={cn(
@@ -699,7 +737,6 @@ function TrackRow({
         />
       </div>
 
-      {/* Amounts row */}
       <div className="flex items-center justify-between text-xs">
         <span className="text-gray-500">
           {formatCents(spent)} of {formatCents(budgeted)}
