@@ -6,6 +6,8 @@ services:
       - "8000"
     ports:
       - "127.0.0.1:8000:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - db-data:/app/data
       - receipts:/app/data/receipts
