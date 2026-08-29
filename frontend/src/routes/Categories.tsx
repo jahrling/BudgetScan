@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { ChevronRight, Database, Pencil, Plus, Trash2 } from "lucide-react";
+import { useMemo, useState } from "react";
+import { ChevronRight, Database, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
 import { Layout } from "../components/Layout";
 import { Button } from "../components/ui/button";
@@ -34,9 +34,28 @@ export default function Categories() {
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const [search, setSearch] = useState("");
   const reindexMut = useMutation({
     mutationFn: () => api.post<{ indexed: number }>("/rules/reindex", {}),
   });
+
+  const matchingIds = useMemo(() => {
+    if (!search.trim()) return null;
+    const q = search.trim().toLowerCase();
+    const matched = new Set<number>();
+    for (const c of categories) {
+      if (c.name.toLowerCase().includes(q)) {
+        matched.add(c.id);
+        let pid = c.parent_id;
+        while (pid !== null) {
+          matched.add(pid);
+          const parent = categories.find((p) => p.id === pid);
+          pid = parent?.parent_id ?? null;
+        }
+      }
+    }
+    return matched;
+  }, [categories, search]);
 
   function openCreate(parentId: number | null = null) {
     setForm({ name: "", parent_id: parentId });
@@ -88,20 +107,28 @@ export default function Categories() {
   }
 
   function renderTree(parentId: number | null, depth: number) {
-    const children = (byParent.get(parentId) ?? []).sort((a, b) =>
+    let children = (byParent.get(parentId) ?? []).sort((a, b) =>
       a.name.localeCompare(b.name),
     );
+    if (matchingIds) {
+      children = children.filter((c) => matchingIds.has(c.id));
+    }
     if (!children.length) return null;
 
     return (
       <ul className={cn(depth > 0 && "ml-4 border-l border-gray-200")}>
         {children.map((cat) => {
-          const hasChildren = byParent.has(cat.id);
-          const isExpanded = expanded.has(cat.id);
+          const hasChildren = byParent.has(cat.id) &&
+            (!matchingIds || (byParent.get(cat.id) ?? []).some((c) => matchingIds.has(c.id)));
+          const isExpanded = matchingIds ? true : expanded.has(cat.id);
+          const isDirectMatch = matchingIds && cat.name.toLowerCase().includes(search.trim().toLowerCase());
 
           return (
             <li key={cat.id}>
-              <div className="flex items-center gap-1 py-2 px-2 hover:bg-gray-50 rounded-md group">
+              <div className={cn(
+                "flex items-center gap-1 py-2 px-2 hover:bg-gray-50 rounded-md group",
+                isDirectMatch && "bg-sky-50",
+              )}>
                 <button
                   onClick={() => hasChildren && toggleExpand(cat.id)}
                   className="w-5 h-5 flex items-center justify-center shrink-0"
@@ -116,7 +143,10 @@ export default function Categories() {
                   )}
                 </button>
 
-                <span className="flex-1 text-sm font-medium truncate">
+                <span className={cn(
+                  "flex-1 text-sm font-medium truncate",
+                  isDirectMatch && "text-sky-700",
+                )}>
                   {cat.name}
                 </span>
 
@@ -169,12 +199,26 @@ export default function Categories() {
         </Button>
       </div>
 
+      {!isLoading && categories.length > 0 && (
+        <div className="relative mb-3">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Filter categories…"
+            className="pl-9"
+          />
+        </div>
+      )}
+
       {isLoading ? (
         <p className="text-gray-500 text-sm">Loading…</p>
       ) : categories.length === 0 ? (
         <p className="text-gray-500 text-sm">
           No categories yet. Tap Add to create one.
         </p>
+      ) : matchingIds !== null && matchingIds.size === 0 ? (
+        <p className="text-gray-500 text-sm">No categories match "{search}".</p>
       ) : (
         <div className="bg-white rounded-lg border border-gray-200 p-2">
           {renderTree(null, 0)}

@@ -105,7 +105,11 @@ async def get_budget_status(
 
     results = []
     for b in active_budgets:
-        spent = spent_map.get(b.category_id, 0)
+        raw_spent = spent_map.get(b.category_id, 0)
+        is_income = b.category.is_income if b.category else False
+        # Expenses are stored as negative amounts; negate to get positive spend.
+        # Income is already positive.
+        spent = raw_spent if is_income else -raw_spent
         remaining = b.amount_cents - spent
         percent = (spent / b.amount_cents * 100) if b.amount_cents > 0 else 0.0
         percent_remaining = (
