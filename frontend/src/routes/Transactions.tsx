@@ -47,6 +47,12 @@ function todayStr(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+function thirtyDaysAgoStr(): string {
+  const d = new Date();
+  d.setDate(d.getDate() - 30);
+  return d.toISOString().slice(0, 10);
+}
+
 interface AddForm {
   date: string;
   account_id: number | null;
@@ -79,9 +85,12 @@ const DEFAULT_DIRS: Record<SortField, SortDir> = {
 };
 
 export default function Transactions() {
-  const [filters, setFilters] = useState<Record<string, string>>({});
+  const [defaultDateFrom] = useState(thirtyDaysAgoStr);
+  const [filters, setFilters] = useState<Record<string, string>>(() => ({
+    date_from: new Date(thirtyDaysAgoStr()).toISOString(),
+  }));
   const [searchOpen, setSearchOpen] = useState(false);
-  const [dateFrom, setDateFrom] = useState("");
+  const [dateFrom, setDateFrom] = useState(thirtyDaysAgoStr);
   const [dateTo, setDateTo] = useState("");
   const [filterAccount, setFilterAccount] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
@@ -147,12 +156,13 @@ export default function Transactions() {
   }
 
   function clearFilters() {
-    setDateFrom("");
+    const from = thirtyDaysAgoStr();
+    setDateFrom(from);
     setDateTo("");
     setFilterAccount("");
     setFilterStatus("");
     setFilterCategory("");
-    setFilters({});
+    setFilters({ date_from: new Date(from).toISOString() });
     setPage(0);
   }
 
@@ -489,23 +499,49 @@ export default function Transactions() {
       <Dialog open={searchOpen} onClose={() => setSearchOpen(false)}>
         <DialogTitle>Filter Transactions</DialogTitle>
         <div className="space-y-3">
-          <div>
-            <Label>From</Label>
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
-            />
+          <div className="flex items-end gap-2">
+            <div className="flex-1">
+              <Label>From</Label>
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+              />
+            </div>
+            <div className="flex-1">
+              <Label>To</Label>
+              <input
+                type="date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+              />
+            </div>
           </div>
-          <div>
-            <Label>To</Label>
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
-            />
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setDateFrom(defaultDateFrom);
+                setDateTo("");
+              }}
+              className={dateFrom === defaultDateFrom && !dateTo ? "border-sky-500 text-sky-600" : ""}
+            >
+              Last 30 Days
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setDateFrom("");
+                setDateTo("");
+              }}
+              className={!dateFrom && !dateTo ? "border-sky-500 text-sky-600" : ""}
+            >
+              All Time
+            </Button>
           </div>
           {accounts.length > 0 && (
             <div>

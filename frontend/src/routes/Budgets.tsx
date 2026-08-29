@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { ChevronDown, ChevronUp, DollarSign, Pencil, Pin, PinOff, Plus, Sparkles, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronUp, DollarSign, Pencil, Pin, PinOff, Plus, Sparkles, Trash2, X } from "lucide-react";
 import { Layout } from "../components/Layout";
 import { Button } from "../components/ui/button";
 import { Label } from "../components/ui/label";
@@ -18,6 +18,7 @@ import {
   useUpdateBudget,
 } from "../hooks/useBudgets";
 import { useCategories } from "../hooks/useCategories";
+import { useTransactions } from "../hooks/useTransactions";
 import type { Budget, BudgetStatusItem, IncomeSummary as IncomeSummaryType } from "../types/models";
 import { cn } from "../lib/utils";
 
@@ -88,6 +89,7 @@ export default function Budgets() {
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [sliderEdits, setSliderEdits] = useState<Record<number, number>>({});
+  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
 
   const catMap = new Map(categories.map((c) => [c.id, c.name]));
   const incomeCatIds = useMemo(
@@ -297,8 +299,11 @@ export default function Budgets() {
         ) : (
           <>
             <HealthBanner totalBudgeted={totalBudgeted} totalSpent={totalSpent} />
-            <div className="md:grid md:grid-cols-2 md:gap-3 space-y-3 md:space-y-0">
-              {budgets.map((b) => {
+            {(() => {
+              const selectedStatus = selectedCategoryId ? statusMap.get(selectedCategoryId) : null;
+              const selectedName = selectedCategoryId ? (catMap.get(selectedCategoryId) ?? "Unknown") : "";
+
+              const budgetCards = budgets.map((b) => {
                 const catName = catMap.get(b.category_id) ?? "Unknown";
                 const st = statusMap.get(b.category_id);
                 return (
@@ -308,10 +313,47 @@ export default function Budgets() {
                     catName={catName}
                     statusItem={st ?? null}
                     isIncome={incomeCatIds.has(b.category_id)}
+                    selected={b.category_id === selectedCategoryId}
+                    onClick={() =>
+                      setSelectedCategoryId(
+                        b.category_id === selectedCategoryId ? null : b.category_id,
+                      )
+                    }
                   />
                 );
-              })}
-            </div>
+              });
+
+              if (selectedCategoryId) {
+                const periodStart = selectedStatus?.period_start ?? todayFirstOfMonth();
+                const periodEnd = selectedStatus?.period_end ?? (() => {
+                  const d = new Date();
+                  return new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().slice(0, 10);
+                })();
+
+                return (
+                  <div className="md:grid md:grid-cols-5 md:gap-4">
+                    <div className="hidden md:block md:col-span-2 space-y-2 md:max-h-[calc(100vh-14rem)] md:overflow-y-auto md:pr-1">
+                      {budgetCards}
+                    </div>
+                    <div className="md:col-span-3">
+                      <BudgetTransactionPanel
+                        categoryId={selectedCategoryId}
+                        categoryName={selectedName}
+                        periodStart={periodStart}
+                        periodEnd={periodEnd}
+                        onReset={() => setSelectedCategoryId(null)}
+                      />
+                    </div>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="md:grid md:grid-cols-2 md:gap-3 space-y-3 md:space-y-0">
+                  {budgetCards}
+                </div>
+              );
+            })()}
           </>
         )
       )}
@@ -670,11 +712,15 @@ function TrackRow({
   catName,
   statusItem,
   isIncome,
+  selected,
+  onClick,
 }: {
   budget: Budget;
   catName: string;
   statusItem: BudgetStatusItem | null;
   isIncome: boolean;
+  selected?: boolean;
+  onClick?: () => void;
 }) {
   const spent = statusItem?.spent_cents ?? 0;
   const budgeted = statusItem?.budgeted_cents ?? budget.amount_cents;
@@ -685,7 +731,13 @@ function TrackRow({
 
   if (isIncome) {
     return (
-      <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-3">
+      <div
+        className={cn(
+          "rounded-lg border bg-emerald-50/50 p-3 cursor-pointer transition-colors",
+          selected ? "border-sky-500 ring-1 ring-sky-500" : "border-emerald-200 hover:border-emerald-300",
+        )}
+        onClick={onClick}
+      >
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
             <h3 className="font-medium text-sm text-emerald-900">{catName}</h3>
@@ -716,7 +768,13 @@ function TrackRow({
   }
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-3">
+    <div
+      className={cn(
+        "bg-white rounded-lg border p-3 cursor-pointer transition-colors",
+        selected ? "border-sky-500 ring-1 ring-sky-500" : "border-gray-200 hover:border-gray-300",
+      )}
+      onClick={onClick}
+    >
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <h3 className="font-medium text-sm">{catName}</h3>
@@ -862,6 +920,90 @@ function AutoBudgetPanel({
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function BudgetTransactionPanel({
+  categoryId,
+  categoryName,
+  periodStart,
+  periodEnd,
+  onReset,
+}: {
+  categoryId: number;
+  categoryName: string;
+  periodStart: string;
+  periodEnd: string;
+  onReset: () => void;
+}) {
+  const endDate = periodEnd.slice(0, 10);
+  const params: Record<string, string> = {
+    category_id: String(categoryId),
+    date_from: new Date(periodStart).toISOString(),
+    date_to: new Date(endDate + "T23:59:59").toISOString(),
+    sort: "posted_at:desc",
+    limit: "200",
+  };
+  const { data, isLoading } = useTransactions(params);
+  const items = data?.items ?? [];
+  const total = data?.total ?? 0;
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <button
+            onClick={onReset}
+            className="flex items-center text-sm text-sky-600 md:hidden mb-1"
+          >
+            <ChevronLeft className="h-4 w-4" />
+            Back to budgets
+          </button>
+          <h3 className="font-semibold text-sm">{categoryName}</h3>
+          <p className="text-xs text-gray-500">
+            {new Date(periodStart).toLocaleDateString()} – {new Date(periodEnd).toLocaleDateString()}
+          </p>
+        </div>
+        <Button variant="outline" size="sm" onClick={onReset} className="hidden md:flex">
+          <X className="h-3.5 w-3.5 mr-1" />
+          Reset
+        </Button>
+      </div>
+
+      {isLoading ? (
+        <p className="text-gray-500 text-sm">Loading…</p>
+      ) : items.length === 0 ? (
+        <p className="text-gray-500 text-sm">No transactions in this period.</p>
+      ) : (
+        <>
+          <p className="text-xs text-gray-500 mb-2">
+            {total} transaction{total !== 1 ? "s" : ""}
+            {" · "}
+            {formatCents(items.reduce((s, t) => s + t.amount_cents, 0))} total
+          </p>
+          <div className="divide-y divide-gray-100 border border-gray-200 rounded-lg overflow-hidden">
+            {items.map((t) => (
+              <div key={t.id} className="flex items-center justify-between px-3 py-2 bg-white">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium truncate text-gray-900">
+                    {t.merchant_name || t.description || "—"}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {new Date(t.posted_at).toLocaleDateString()}
+                    {t.merchant_name && t.description && t.merchant_name !== t.description && (
+                      <span className="text-gray-400"> · {t.description}</span>
+                    )}
+                  </p>
+                </div>
+                <span className="text-sm font-semibold tabular-nums whitespace-nowrap ml-3">
+                  {formatCents(t.amount_cents)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }

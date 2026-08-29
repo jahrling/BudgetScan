@@ -182,7 +182,7 @@ async def test_status_with_spending(client: AsyncClient) -> None:
         txn = Transaction(
             account_id=account.id,
             posted_at=datetime(today.year, today.month, 15, tzinfo=timezone.utc),
-            amount_cents=2500,
+            amount_cents=-2500,
             status="final",
         )
         session.add(txn)
@@ -191,12 +191,12 @@ async def test_status_with_spending(client: AsyncClient) -> None:
         li1 = LineItem(
             transaction_id=txn.id,
             category_id=cat["id"],
-            amount_cents=1500,
+            amount_cents=-1500,
         )
         li2 = LineItem(
             transaction_id=txn.id,
             category_id=cat["id"],
-            amount_cents=1000,
+            amount_cents=-1000,
         )
         session.add_all([li1, li2])
         await session.commit()
