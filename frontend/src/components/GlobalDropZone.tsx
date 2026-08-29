@@ -11,7 +11,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { Upload } from "lucide-react";
 import { uploadReceipt } from "../hooks/useReceipts";
 
-const IMPORT_EXTENSIONS = new Set([".qfx", ".ofx", ".qif"]);
+const IMPORT_EXTENSIONS = new Set([".qif"]);
 const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".heic", ".webp", ".gif", ".bmp", ".tiff"]);
 
 function fileExtension(name: string): string {
@@ -145,7 +145,7 @@ export function GlobalDropZone({ children }: { children: ReactNode }) {
               {uploading ? "Uploading…" : "Drop file to upload"}
             </p>
             <p className="text-sm text-white/70 mt-1">
-              QFX, QIF, or receipt image
+              QIF or receipt image
             </p>
           </div>
         </div>

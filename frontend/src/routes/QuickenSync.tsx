@@ -95,7 +95,7 @@ export default function QuickenSync() {
     <Layout>
       <h1 className="text-lg font-semibold mb-3">Quicken sync</h1>
       <p className="text-sm text-gray-500 mb-4">
-        Import bank data from Quicken, export categorized splits back.
+        Import QIF data from Quicken, export categorized splits back.
       </p>
 
       {/* Tab switcher */}
@@ -110,7 +110,7 @@ export default function QuickenSync() {
           }`}
         >
           <ArrowDownToLine className="h-4 w-4" />
-          Import QFX
+          Import QIF
         </button>
         <button
           type="button"
@@ -137,8 +137,12 @@ export default function QuickenSync() {
 
 // --- Import section (extracted from Import.tsx) ---
 
-function formatFromName(name: string): "qfx" | "qif" {
-  return name.toLowerCase().endsWith(".qif") ? "qif" : "qfx";
+function formatFromName(name: string): "qif" {
+  const lower = name.toLowerCase();
+  if (!lower.endsWith(".qif")) {
+    throw new Error("Only QIF files are able to be imported.");
+  }
+  return "qif";
 }
 
 function ImportSection({
@@ -268,7 +272,7 @@ function ImportSection({
   return (
     <div>
       <p className="text-sm text-gray-600 mb-3">
-        In Quicken: <strong>File → File Export → QFX</strong> (or QIF), then
+        In Quicken: <strong>File → File Export → QIF</strong>, then
         drag-and-drop the file here — or click to browse.
       </p>
 
@@ -300,7 +304,7 @@ function ImportSection({
         <input
           ref={fileInputRef}
           type="file"
-          accept=".qfx,.ofx,.qif"
+          accept=".qif"
           onChange={onPick}
           className="hidden"
           disabled={uploadMut.isPending}
@@ -315,7 +319,7 @@ function ImportSection({
         ) : (
           <>
             <p className="text-sm font-medium">
-              {localDragging ? "Drop file here" : "Drag & drop a QFX or QIF file"}
+              {localDragging ? "Drop file here" : "Drag & drop a QIF file"}
             </p>
             <p className="mt-1 text-xs text-gray-500">or click to browse</p>
           </>
@@ -324,7 +328,7 @@ function ImportSection({
 
       {uploadMut.isError && (
         <p className="text-red-600 text-sm mt-2">
-          Upload failed: {String(uploadMut.error)}
+          {uploadMut.error instanceof Error ? uploadMut.error.message : String(uploadMut.error)}
         </p>
       )}
 
