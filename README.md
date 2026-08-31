@@ -46,14 +46,14 @@ The Vite dev server proxies `/api` requests to `http://localhost:8000`.
 ## Weekly Quicken reconciliation workflow
 
 Quicken stays your system of record for bank data; this app owns receipt
-splits and at-the-moment budgeting. The two stay in sync via QFX / QIF
+splits and at-the-moment budgeting. The two stay in sync via QIF
 file exchange — about five minutes a week.
 
 1. **Pull bank data in Quicken** the usual way (One Step Update or manual
    import). Let Quicken auto-match what it can.
-2. **Export the week as QFX** from Quicken: *File → File Export → QFX*.
+2. **Export the week as QIF** from Quicken: *File → File Export → QIF*.
    Pick the account and the date range you want to bring into the app.
-3. **Import in the app** at `/import`. The candidate review table flags
+3. **Import in the app** at `/sync`. The candidate review table flags
    each row:
    - `new` — no existing transaction matches. Default action: **Create**.
    - `duplicate` — same account + amount + day already exists. Default
@@ -64,8 +64,8 @@ file exchange — about five minutes a week.
      FITID is annotated onto your existing receipt-split transaction and
      it's marked `final`. Your line-item splits survive.
 
-   Click **Apply**. Unmapped account ids (a QFX `ACCTID` we've never
-   seen) are surfaced inline so you can map them once and they stick.
+   Click **Apply**. Unmapped account ids we've never seen are surfaced
+   inline so you can map them once and they stick.
 4. **Export QIF back to Quicken** from `/export`. Pick the same date range
    and accounts and download. In Quicken: *File → File Import → QIF File*,
    choose "all accounts", and uncheck duplicates. This backfills the
