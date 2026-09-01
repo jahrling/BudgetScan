@@ -7,6 +7,7 @@ import {
   ArrowUpDown,
   Check,
   ChevronLeft,
+  ChevronRight,
   Plus,
   Search,
   Sparkles,
@@ -32,6 +33,7 @@ import {
   useCreateTransaction,
   useDeleteTransaction,
   useReplaceLineItems,
+  useUpdateTransaction,
   useCategorizeTransactions,
   useApplyCategories,
 } from "../hooks/useTransactions";
@@ -224,17 +226,27 @@ export default function Transactions() {
     setAddOpen(true);
   }
 
+  const items = data?.items ?? [];
+  const total = data?.total ?? 0;
+
   if (selectedId !== null) {
+    const selectedIdx = items.findIndex((t) => t.id === selectedId);
+    const prevId =
+      selectedIdx > 0 ? items[selectedIdx - 1].id : null;
+    const nextId =
+      selectedIdx >= 0 && selectedIdx < items.length - 1
+        ? items[selectedIdx + 1].id
+        : null;
     return (
       <TransactionDetailView
+        key={selectedId}
         txnId={selectedId}
         onBack={() => setSelectedId(null)}
+        onPrev={prevId !== null ? () => setSelectedId(prevId) : undefined}
+        onNext={nextId !== null ? () => setSelectedId(nextId) : undefined}
       />
     );
   }
-
-  const items = data?.items ?? [];
-  const total = data?.total ?? 0;
   const hasFilters = Object.keys(filters).length > 0;
 
   function filterLabel(key: string, value: string): string {
@@ -254,9 +266,9 @@ export default function Transactions() {
 
   return (
     <Layout>
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
         <h1 className="text-xl font-bold">Transactions</h1>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <SnapReceiptButton label="" variant="outline" />
           <Button
             variant="outline"
@@ -361,8 +373,8 @@ export default function Transactions() {
           </div>
 
           {/* Table */}
-          <div className="overflow-x-auto rounded-lg border border-gray-200">
-            <table className="w-full text-sm">
+          <div className="overflow-x-auto min-w-0 rounded-lg border border-gray-200">
+            <table className="w-full text-sm min-w-[600px]">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200">
                   <SortHeader field="posted_at" label="Date" sorts={sorts} onSort={toggleSort} />
@@ -432,11 +444,13 @@ export default function Transactions() {
                         <span
                           className={cn(
                             "inline-block rounded px-1.5 py-0.5 text-[10px] font-medium",
-                            t.status === "split"
-                              ? "bg-green-100 text-green-700"
-                              : t.status === "final"
-                                ? "bg-sky-100 text-sky-700"
-                                : "bg-gray-100 text-gray-600"
+                            t.status === "confirmed"
+                              ? "bg-emerald-100 text-emerald-700"
+                              : t.status === "split"
+                                ? "bg-green-100 text-green-700"
+                                : t.status === "final"
+                                  ? "bg-sky-100 text-sky-700"
+                                  : "bg-gray-100 text-gray-600"
                           )}
                         >
                           {t.status}
@@ -444,7 +458,7 @@ export default function Transactions() {
                         {t.transfer_pair_id && (
                           <span
                             className="inline-block rounded px-1.5 py-0.5 text-[10px] font-medium bg-violet-100 text-violet-700"
-                            title={`Transfer pair #${t.transfer_pair_id}`}
+                            title={`Matched transfer pair #${t.transfer_pair_id} (detected via Detect Transfers)`}
                           >
                             xfer
                           </span>
@@ -586,6 +600,7 @@ export default function Transactions() {
             >
               <option value="">All</option>
               <option value="pending">Pending</option>
+              <option value="confirmed">Confirmed</option>
               <option value="split">Split</option>
               <option value="final">Final</option>
             </Select>
@@ -1084,12 +1099,17 @@ function QuickAccountCreator({
 function TransactionDetailView({
   txnId,
   onBack,
+  onPrev,
+  onNext,
 }: {
   txnId: number;
   onBack: () => void;
+  onPrev?: () => void;
+  onNext?: () => void;
 }) {
   const { data: txn, isLoading } = useTransaction(txnId);
   const replaceMut = useReplaceLineItems();
+  const updateMut = useUpdateTransaction();
 
   const [splits, setSplits] = useState<LineItemInput[] | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -1114,8 +1134,16 @@ function TransactionDetailView({
       txnId: txn.id,
       line_items: splits,
     });
+    if (txn.status !== "confirmed") {
+      await updateMut.mutateAsync({ id: txn.id, status: "confirmed" });
+    }
     setDirty(false);
     setSplits(null);
+  }
+
+  async function handleConfirm() {
+    if (!txn) return;
+    await updateMut.mutateAsync({ id: txn.id, status: "confirmed" });
   }
 
   const prefilled =
@@ -1127,10 +1155,26 @@ function TransactionDetailView({
   if (isLoading || !txn) {
     return (
       <Layout>
-        <button onClick={onBack} className="flex items-center text-sm text-sky-600 mb-4">
-          <ChevronLeft className="h-4 w-4" />
-          Back
-        </button>
+        <div className="flex items-center justify-between mb-4">
+          <button onClick={onBack} className="flex items-center text-sm text-sky-600">
+            <ChevronLeft className="h-4 w-4" />
+            Back
+          </button>
+          <div className="flex gap-1">
+            <button
+              disabled={!onPrev}
+              className="p-1.5 rounded-md border border-gray-200 text-gray-300 cursor-not-allowed"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <button
+              disabled={!onNext}
+              className="p-1.5 rounded-md border border-gray-200 text-gray-300 cursor-not-allowed"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
         <p className="text-gray-500 text-sm">Loading…</p>
       </Layout>
     );
@@ -1142,13 +1186,43 @@ function TransactionDetailView({
 
   return (
     <Layout>
-      <button
-        onClick={onBack}
-        className="flex items-center text-sm text-sky-600 mb-4"
-      >
-        <ChevronLeft className="h-4 w-4" />
-        Back
-      </button>
+      <div className="flex items-center justify-between mb-4">
+        <button
+          onClick={onBack}
+          className="flex items-center text-sm text-sky-600"
+        >
+          <ChevronLeft className="h-4 w-4" />
+          Back
+        </button>
+        <div className="flex gap-1">
+          <button
+            onClick={onPrev}
+            disabled={!onPrev}
+            className={cn(
+              "p-1.5 rounded-md border",
+              onPrev
+                ? "border-gray-300 text-gray-600 hover:bg-gray-100"
+                : "border-gray-200 text-gray-300 cursor-not-allowed",
+            )}
+            title="Previous transaction"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          <button
+            onClick={onNext}
+            disabled={!onNext}
+            className={cn(
+              "p-1.5 rounded-md border",
+              onNext
+                ? "border-gray-300 text-gray-600 hover:bg-gray-100"
+                : "border-gray-200 text-gray-300 cursor-not-allowed",
+            )}
+            title="Next transaction"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
 
       <div className="bg-white rounded-lg border border-gray-200 p-4 mb-4">
         <div className="flex justify-between items-start">
@@ -1191,11 +1265,11 @@ function TransactionDetailView({
         onChange={handleChange}
       />
 
-      <div className="mt-4">
+      <div className="mt-4 flex gap-2">
         <Button
           onClick={handleSave}
-          disabled={!dirty || !balanced || !validCategories || replaceMut.isPending}
-          className="w-full"
+          disabled={!dirty || !balanced || !validCategories || replaceMut.isPending || updateMut.isPending}
+          className="flex-1"
         >
           {replaceMut.isPending
             ? "Saving…"
@@ -1203,6 +1277,21 @@ function TransactionDetailView({
               ? "Save Splits"
               : "Save"}
         </Button>
+
+        {txn.status === "confirmed" ? (
+          <span className="inline-flex items-center rounded-md bg-emerald-100 text-emerald-700 px-3 py-2">
+            <Check className="h-4 w-4" />
+          </span>
+        ) : (
+          <Button
+            onClick={handleConfirm}
+            disabled={updateMut.isPending}
+            variant="outline"
+          >
+            <Check className="h-4 w-4 mr-1" />
+            {updateMut.isPending ? "…" : "Confirm"}
+          </Button>
+        )}
       </div>
     </Layout>
   );

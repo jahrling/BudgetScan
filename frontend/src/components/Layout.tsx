@@ -12,7 +12,7 @@ const navItems = [
   { to: "/docs", label: "Docs", icon: FileText },
 ] as const;
 
-export function Layout({ children }: { children: ReactNode }) {
+export function Layout({ children, wide }: { children: ReactNode; wide?: boolean }) {
   const location = useLocation();
 
   return (
@@ -46,7 +46,10 @@ export function Layout({ children }: { children: ReactNode }) {
       </nav>
 
       {/* Main content — shifts right on desktop to clear the sidebar */}
-      <main className="mx-auto max-w-lg px-4 py-6 pb-20 md:max-w-4xl md:ml-48 lg:ml-56 md:pb-6">
+      <main className={cn(
+        "w-full mx-auto max-w-lg px-4 py-6 pb-20 md:ml-48 lg:ml-56 md:pb-6",
+        wide ? "md:max-w-6xl" : "md:max-w-4xl",
+      )}>
         {children}
       </main>
 

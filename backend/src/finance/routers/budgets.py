@@ -1,5 +1,3 @@
-from datetime import date, timedelta
-
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,8 +9,11 @@ from finance.schemas.budget import (
     BudgetStatusItem,
     BudgetUpdate,
     IncomeSummary,
+    MonthComparison,
+    UnbudgetedSpend,
 )
 from finance.services import budget as budget_service
+from finance.services.period_utils import parse_month_param, prev_month_str
 
 router = APIRouter(
     prefix="/api/budgets",
@@ -22,33 +23,21 @@ router = APIRouter(
 
 
 @router.get("", response_model=list[BudgetRead])
-async def list_budgets(session: AsyncSession = Depends(get_session)):
-    return await budget_service.list_budgets(session)
+async def list_budgets(
+    month: str | None = Query(None),
+    session: AsyncSession = Depends(get_session),
+):
+    return await budget_service.list_budgets(session, month=month)
 
 
 @router.get("/status", response_model=list[BudgetStatusItem])
 async def budget_status(
-    period: str = Query("current_month"),
+    month: str = Query("current"),
     session: AsyncSession = Depends(get_session),
 ):
-    today = date.today()
-    if period == "current_month":
-        start = today.replace(day=1)
-        if today.month == 12:
-            end = today.replace(year=today.year + 1, month=1, day=1) - timedelta(days=1)
-        else:
-            end = today.replace(month=today.month + 1, day=1) - timedelta(days=1)
-    elif period == "current_week":
-        start = today - timedelta(days=today.weekday())
-        end = start + timedelta(days=6)
-    else:
-        start = today.replace(day=1)
-        if today.month == 12:
-            end = today.replace(year=today.year + 1, month=1, day=1) - timedelta(days=1)
-        else:
-            end = today.replace(month=today.month + 1, day=1) - timedelta(days=1)
-
-    return await budget_service.get_budget_status(session, start, end)
+    start, end = parse_month_param(month)
+    ym = month if month != "current" else f"{start.year}-{start.month:02d}"
+    return await budget_service.get_budget_status(session, start, end, ym)
 
 
 @router.get("/suggestions")
@@ -61,27 +50,43 @@ async def spending_suggestions(
 
 @router.get("/income-summary", response_model=IncomeSummary)
 async def income_summary(
-    period: str = Query("current_month"),
+    month: str = Query("current"),
     session: AsyncSession = Depends(get_session),
 ):
-    today = date.today()
-    if period == "current_month":
-        start = today.replace(day=1)
-        if today.month == 12:
-            end = today.replace(year=today.year + 1, month=1, day=1) - timedelta(days=1)
-        else:
-            end = today.replace(month=today.month + 1, day=1) - timedelta(days=1)
-    elif period == "current_week":
-        start = today - timedelta(days=today.weekday())
-        end = start + timedelta(days=6)
-    else:
-        start = today.replace(day=1)
-        if today.month == 12:
-            end = today.replace(year=today.year + 1, month=1, day=1) - timedelta(days=1)
-        else:
-            end = today.replace(month=today.month + 1, day=1) - timedelta(days=1)
-
+    start, end = parse_month_param(month)
     return await budget_service.get_income_summary(session, start, end)
+
+
+@router.get("/unbudgeted-spend", response_model=UnbudgetedSpend)
+async def unbudgeted_spend(
+    month: str = Query("current"),
+    session: AsyncSession = Depends(get_session),
+):
+    start, end = parse_month_param(month)
+    ym = month if month != "current" else f"{start.year}-{start.month:02d}"
+    return await budget_service.get_unbudgeted_spend(session, start, end, ym)
+
+
+@router.get("/comparison", response_model=MonthComparison)
+async def month_comparison(
+    month: str = Query("current"),
+    session: AsyncSession = Depends(get_session),
+):
+    cur_start, cur_end = parse_month_param(month)
+    cur_ym = month if month != "current" else f"{cur_start.year}-{cur_start.month:02d}"
+    pri_ym = prev_month_str(cur_ym)
+    pri_start, pri_end = parse_month_param(pri_ym)
+    return await budget_service.get_month_comparison(
+        session, cur_ym, pri_ym, cur_start, cur_end, pri_start, pri_end
+    )
+
+
+@router.post("/seed", response_model=list[BudgetRead])
+async def seed_month(
+    month: str = Query(...),
+    session: AsyncSession = Depends(get_session),
+):
+    return await budget_service.seed_month(session, month)
 
 
 @router.get("/{budget_id}", response_model=BudgetRead)

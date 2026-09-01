@@ -1,19 +1,24 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api";
-import type { Budget, BudgetStatusItem, IncomeSummary } from "../types/models";
+import type {
+  Budget,
+  BudgetStatusItem,
+  IncomeSummary,
+  MonthComparison,
+  UnbudgetedSpend,
+} from "../types/models";
 
-export function useBudgets() {
+export function useBudgets(month: string) {
   return useQuery({
-    queryKey: ["budgets"],
-    queryFn: () => api.get<Budget[]>("/budgets"),
+    queryKey: ["budgets", month],
+    queryFn: () => api.get<Budget[]>(`/budgets?month=${month}`),
   });
 }
 
-export function useBudgetStatus() {
+export function useBudgetStatus(month: string) {
   return useQuery({
-    queryKey: ["budgets", "status"],
-    queryFn: () =>
-      api.get<BudgetStatusItem[]>("/budgets/status?period=current_month"),
+    queryKey: ["budgets", "status", month],
+    queryFn: () => api.get<BudgetStatusItem[]>(`/budgets/status?month=${month}`),
   });
 }
 
@@ -36,11 +41,27 @@ export function useSpendingSuggestions(months = 3) {
   });
 }
 
-export function useIncomeSummary() {
+export function useIncomeSummary(month: string) {
   return useQuery({
-    queryKey: ["budgets", "income-summary"],
+    queryKey: ["budgets", "income-summary", month],
     queryFn: () =>
-      api.get<IncomeSummary>("/budgets/income-summary?period=current_month"),
+      api.get<IncomeSummary>(`/budgets/income-summary?month=${month}`),
+  });
+}
+
+export function useUnbudgetedSpend(month: string) {
+  return useQuery({
+    queryKey: ["budgets", "unbudgeted-spend", month],
+    queryFn: () =>
+      api.get<UnbudgetedSpend>(`/budgets/unbudgeted-spend?month=${month}`),
+  });
+}
+
+export function useMonthComparison(month: string) {
+  return useQuery({
+    queryKey: ["budgets", "comparison", month],
+    queryFn: () =>
+      api.get<MonthComparison>(`/budgets/comparison?month=${month}`),
   });
 }
 
@@ -49,9 +70,10 @@ export function useCreateBudget() {
   return useMutation({
     mutationFn: (data: {
       category_id: number;
-      period: string;
+      year_month: string;
       amount_cents: number;
-      start_date: string;
+      period?: string;
+      start_date?: string;
       end_date?: string | null;
     }) => api.post<Budget>("/budgets", data),
     onSuccess: () => {
@@ -69,6 +91,7 @@ export function useUpdateBudget() {
     }: {
       id: number;
       category_id?: number;
+      year_month?: string;
       period?: string;
       amount_cents?: number;
       start_date?: string;
@@ -85,6 +108,17 @@ export function useDeleteBudget() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: number) => api.delete(`/budgets/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["budgets"] });
+    },
+  });
+}
+
+export function useSeedMonth() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (month: string) =>
+      api.post<Budget[]>(`/budgets/seed?month=${month}`, {}),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["budgets"] });
     },

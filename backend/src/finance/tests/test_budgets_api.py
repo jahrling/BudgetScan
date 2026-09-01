@@ -11,6 +11,11 @@ from finance.models.account import Account
 from finance.models.category import Category
 from finance.models.line_item import LineItem
 from finance.models.transaction import Transaction
+from finance.services.period_utils import month_str
+
+
+def _current_ym() -> str:
+    return month_str(date.today())
 
 
 @pytest.fixture
@@ -51,16 +56,15 @@ async def _create_budget(
     category_id: int,
     amount_cents: int = 40000,
     period: str = "monthly",
-    start_date: str | None = None,
+    year_month: str | None = None,
 ) -> dict:
-    today = date.today()
     resp = await client.post(
         "/api/budgets",
         json={
             "category_id": category_id,
             "period": period,
             "amount_cents": amount_cents,
-            "start_date": start_date or today.replace(day=1).isoformat(),
+            "year_month": year_month or _current_ym(),
         },
     )
     assert resp.status_code == 201
@@ -76,10 +80,27 @@ async def test_create_and_list(client: AsyncClient) -> None:
     assert budget["category_id"] == cat["id"]
     assert budget["amount_cents"] == 40000
     assert budget["period"] == "monthly"
+    assert budget["year_month"] == _current_ym()
 
     resp = await client.get("/api/budgets")
     assert resp.status_code == 200
     assert len(resp.json()) == 1
+
+
+async def test_list_filter_by_month(client: AsyncClient) -> None:
+    cat = await _create_category(client)
+    await _create_budget(client, cat["id"], year_month="2026-07")
+    await _create_budget(client, cat["id"], year_month="2026-08", amount_cents=50000)
+
+    resp = await client.get("/api/budgets?month=2026-07")
+    assert resp.status_code == 200
+    items = resp.json()
+    assert len(items) == 1
+    assert items[0]["year_month"] == "2026-07"
+
+    resp = await client.get("/api/budgets")
+    assert resp.status_code == 200
+    assert len(resp.json()) == 2
 
 
 async def test_get_by_id(client: AsyncClient) -> None:
@@ -115,14 +136,13 @@ async def test_delete(client: AsyncClient) -> None:
 
 
 async def test_invalid_category(client: AsyncClient) -> None:
-    today = date.today()
     resp = await client.post(
         "/api/budgets",
         json={
             "category_id": 9999,
             "period": "monthly",
             "amount_cents": 10000,
-            "start_date": today.isoformat(),
+            "year_month": _current_ym(),
         },
     )
     assert resp.status_code == 400
@@ -130,14 +150,13 @@ async def test_invalid_category(client: AsyncClient) -> None:
 
 async def test_invalid_period(client: AsyncClient) -> None:
     cat = await _create_category(client)
-    today = date.today()
     resp = await client.post(
         "/api/budgets",
         json={
             "category_id": cat["id"],
             "period": "yearly",
             "amount_cents": 10000,
-            "start_date": today.isoformat(),
+            "year_month": _current_ym(),
         },
     )
     assert resp.status_code == 400
@@ -147,7 +166,7 @@ async def test_invalid_period(client: AsyncClient) -> None:
 
 
 async def test_status_empty(client: AsyncClient) -> None:
-    resp = await client.get("/api/budgets/status?period=current_month")
+    resp = await client.get("/api/budgets/status?month=current")
     assert resp.status_code == 200
     assert resp.json() == []
 
@@ -156,7 +175,7 @@ async def test_status_with_budget_no_spending(client: AsyncClient) -> None:
     cat = await _create_category(client)
     await _create_budget(client, cat["id"], amount_cents=40000)
 
-    resp = await client.get("/api/budgets/status?period=current_month")
+    resp = await client.get("/api/budgets/status?month=current")
     assert resp.status_code == 200
     items = resp.json()
     assert len(items) == 1
@@ -201,7 +220,7 @@ async def test_status_with_spending(client: AsyncClient) -> None:
         session.add_all([li1, li2])
         await session.commit()
 
-    resp = await client.get("/api/budgets/status?period=current_month")
+    resp = await client.get("/api/budgets/status?month=current")
     assert resp.status_code == 200
     items = resp.json()
     assert len(items) == 1
@@ -211,11 +230,22 @@ async def test_status_with_spending(client: AsyncClient) -> None:
     assert item["percent_used"] == pytest.approx(6.2, abs=0.1)
 
 
+async def test_status_specific_month(client: AsyncClient) -> None:
+    cat = await _create_category(client)
+    ym = _current_ym()
+    await _create_budget(client, cat["id"], amount_cents=40000, year_month=ym)
+
+    resp = await client.get(f"/api/budgets/status?month={ym}")
+    assert resp.status_code == 200
+    items = resp.json()
+    assert len(items) == 1
+
+
 # ── Income summary tests ──
 
 
 async def test_income_summary_empty(client: AsyncClient) -> None:
-    resp = await client.get("/api/budgets/income-summary?period=current_month")
+    resp = await client.get("/api/budgets/income-summary?month=current")
     assert resp.status_code == 200
     data = resp.json()
     assert data["total_cents"] == 0
@@ -264,7 +294,7 @@ async def test_income_summary_with_data(client: AsyncClient) -> None:
         ))
         await session.commit()
 
-    resp = await client.get("/api/budgets/income-summary?period=current_month")
+    resp = await client.get("/api/budgets/income-summary?month=current")
     assert resp.status_code == 200
     data = resp.json()
     assert data["total_cents"] == 505000
@@ -335,3 +365,98 @@ async def test_spending_suggestions_include_income_sorted_by_abs(client: AsyncCl
     assert salary_sug["avg_monthly_cents"] == 500000
 
     assert suggestions[0]["category_id"] == salary["id"]
+
+
+# ── Unbudgeted spend tests ──
+
+
+async def test_unbudgeted_spend_empty(client: AsyncClient) -> None:
+    resp = await client.get("/api/budgets/unbudgeted-spend?month=current")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total_cents"] == 0
+    assert data["items"] == []
+
+
+async def test_unbudgeted_spend_with_data(client: AsyncClient) -> None:
+    groceries = await _create_category(client, "Groceries")
+    dining = await _create_category(client, "Dining")
+    await _create_budget(client, groceries["id"], amount_cents=40000)
+
+    factory = client._session_factory  # type: ignore[attr-defined]
+    async with factory() as session:
+        account = Account(name="Checking", type="checking", currency="USD")
+        session.add(account)
+        await session.flush()
+
+        today = date.today()
+        txn = Transaction(
+            account_id=account.id,
+            posted_at=datetime(today.year, today.month, 10, tzinfo=timezone.utc),
+            amount_cents=-3000,
+            status="final",
+        )
+        session.add(txn)
+        await session.flush()
+
+        session.add(LineItem(
+            transaction_id=txn.id,
+            category_id=dining["id"],
+            amount_cents=-3000,
+        ))
+        await session.commit()
+
+    resp = await client.get("/api/budgets/unbudgeted-spend?month=current")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total_cents"] == 3000
+    assert len(data["items"]) == 1
+    assert data["items"][0]["category_name"] == "Dining"
+
+
+# ── Seed tests ──
+
+
+async def test_seed_month(client: AsyncClient) -> None:
+    cat = await _create_category(client)
+    await _create_budget(client, cat["id"], amount_cents=40000, year_month="2026-07")
+
+    resp = await client.post("/api/budgets/seed?month=2026-08")
+    assert resp.status_code == 200
+    seeded = resp.json()
+    assert len(seeded) == 1
+    assert seeded[0]["year_month"] == "2026-08"
+    assert seeded[0]["amount_cents"] == 40000
+    assert seeded[0]["category_id"] == cat["id"]
+
+
+async def test_seed_month_conflict(client: AsyncClient) -> None:
+    cat = await _create_category(client)
+    await _create_budget(client, cat["id"], year_month="2026-08")
+
+    resp = await client.post("/api/budgets/seed?month=2026-08")
+    assert resp.status_code == 409
+
+
+async def test_seed_no_source(client: AsyncClient) -> None:
+    resp = await client.post("/api/budgets/seed?month=2026-08")
+    assert resp.status_code == 404
+
+
+# ── Comparison tests ──
+
+
+async def test_comparison(client: AsyncClient) -> None:
+    cat = await _create_category(client)
+    await _create_budget(client, cat["id"], amount_cents=40000, year_month="2026-07")
+    await _create_budget(client, cat["id"], amount_cents=45000, year_month="2026-08")
+
+    resp = await client.get("/api/budgets/comparison?month=2026-08")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["current_month"] == "2026-08"
+    assert data["prior_month"] == "2026-07"
+    assert len(data["items"]) == 1
+    item = data["items"][0]
+    assert item["current_budgeted_cents"] == 45000
+    assert item["prior_budgeted_cents"] == 40000
