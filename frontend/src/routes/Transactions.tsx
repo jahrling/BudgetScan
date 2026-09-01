@@ -1232,6 +1232,11 @@ function TransactionDetailView({
             </h2>
             <p className="text-xs text-gray-500">
               {new Date(txn.posted_at).toLocaleDateString()}
+              {txn.account_name && (
+                <span className="ml-2 inline-flex items-center rounded bg-gray-100 px-1.5 py-0.5 text-gray-600">
+                  {txn.account_name}
+                </span>
+              )}
             </p>
           </div>
           <span className="text-lg font-bold">

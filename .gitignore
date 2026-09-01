@@ -34,6 +34,12 @@ data/
 *.qbo
 *.ofx
 
+# Private — infra topology, Tailscale hostnames, network details
+*.private.md
+
+# Generated
+REPO_MAP.txt
+
 # IDE
 .vscode/
 .idea/
