@@ -12,6 +12,7 @@ export interface Category {
 export interface Budget {
   id: number;
   category_id: number;
+  year_month: string;
   period: string;
   amount_cents: number;
   start_date: string;
@@ -51,6 +52,35 @@ export interface IncomeCategoryItem {
 export interface IncomeSummary {
   total_cents: number;
   categories: IncomeCategoryItem[];
+}
+
+export interface UnbudgetedSpendItem {
+  category_id: number | null;
+  category_name: string;
+  spent_cents: number;
+  txn_count: number;
+}
+
+export interface UnbudgetedSpend {
+  total_cents: number;
+  items: UnbudgetedSpendItem[];
+}
+
+export interface MonthComparisonItem {
+  category_id: number;
+  category_name: string;
+  category_icon: string | null;
+  category_color: string | null;
+  current_budgeted_cents: number;
+  current_spent_cents: number;
+  prior_spent_cents: number;
+  prior_budgeted_cents: number;
+}
+
+export interface MonthComparison {
+  current_month: string;
+  prior_month: string;
+  items: MonthComparisonItem[];
 }
 
 export interface Account {

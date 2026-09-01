@@ -1,7 +1,7 @@
 from datetime import date, timedelta
 
 from fastapi import HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import func, select, and_, not_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from finance.models.budget import Budget
@@ -9,12 +9,16 @@ from finance.models.category import Category
 from finance.models.line_item import LineItem
 from finance.models.transaction import Transaction
 from finance.schemas.budget import BudgetCreate, BudgetUpdate
+from finance.services.period_utils import parse_month_param, prev_month_str
 
 
-async def list_budgets(session: AsyncSession) -> list[Budget]:
-    result = await session.execute(
-        select(Budget).order_by(Budget.category_id)
-    )
+async def list_budgets(
+    session: AsyncSession, month: str | None = None
+) -> list[Budget]:
+    stmt = select(Budget).order_by(Budget.category_id)
+    if month is not None:
+        stmt = stmt.where(Budget.year_month == month)
+    result = await session.execute(stmt)
     return list(result.scalars().all())
 
 
@@ -32,7 +36,12 @@ async def create_budget(session: AsyncSession, data: BudgetCreate) -> Budget:
     if data.period not in ("monthly", "weekly"):
         raise HTTPException(status_code=400, detail="Period must be 'monthly' or 'weekly'")
 
-    budget = Budget(**data.model_dump())
+    dump = data.model_dump()
+    if dump.get("start_date") is None:
+        start, _ = parse_month_param(data.year_month)
+        dump["start_date"] = start
+
+    budget = Budget(**dump)
     session.add(budget)
     await session.commit()
     await session.refresh(budget)
@@ -68,15 +77,15 @@ async def delete_budget(session: AsyncSession, budget_id: int) -> None:
 
 
 async def get_budget_status(
-    session: AsyncSession, period_start: date, period_end: date
+    session: AsyncSession,
+    period_start: date,
+    period_end: date,
+    year_month: str,
 ) -> list[dict]:
-    budgets = await session.execute(
-        select(Budget).where(
-            Budget.start_date <= period_end,
-            (Budget.end_date.is_(None)) | (Budget.end_date >= period_start),
-        )
+    budgets_result = await session.execute(
+        select(Budget).where(Budget.year_month == year_month)
     )
-    active_budgets = list(budgets.scalars().all())
+    active_budgets = list(budgets_result.scalars().all())
 
     if not active_budgets:
         return []
@@ -107,8 +116,6 @@ async def get_budget_status(
     for b in active_budgets:
         raw_spent = spent_map.get(b.category_id, 0)
         is_income = b.category.is_income if b.category else False
-        # Expenses are stored as negative amounts; negate to get positive spend.
-        # Income is already positive.
         spent = raw_spent if is_income else -raw_spent
         remaining = b.amount_cents - spent
         percent = (spent / b.amount_cents * 100) if b.amount_cents > 0 else 0.0
@@ -235,3 +242,219 @@ async def get_income_summary(
 
     categories.sort(key=lambda c: c["amount_cents"], reverse=True)
     return {"total_cents": total, "categories": categories}
+
+
+async def get_unbudgeted_spend(
+    session: AsyncSession,
+    period_start: date,
+    period_end: date,
+    year_month: str,
+) -> dict:
+    budgeted_ids_result = await session.execute(
+        select(Budget.category_id).where(Budget.year_month == year_month)
+    )
+    budgeted_ids = {row[0] for row in budgeted_ids_result}
+    income_ids = await _income_category_ids(session)
+    excluded_ids = budgeted_ids | income_ids
+
+    items: list[dict] = []
+    grand_total = 0
+
+    if excluded_ids:
+        line_result = await session.execute(
+            select(
+                LineItem.category_id,
+                func.coalesce(func.sum(LineItem.amount_cents), 0).label("spent"),
+                func.count(LineItem.id).label("cnt"),
+            )
+            .join(Transaction, LineItem.transaction_id == Transaction.id)
+            .where(
+                LineItem.category_id.not_in(excluded_ids),
+                Transaction.posted_at >= period_start,
+                Transaction.posted_at <= period_end,
+            )
+            .group_by(LineItem.category_id)
+        )
+    else:
+        line_result = await session.execute(
+            select(
+                LineItem.category_id,
+                func.coalesce(func.sum(LineItem.amount_cents), 0).label("spent"),
+                func.count(LineItem.id).label("cnt"),
+            )
+            .join(Transaction, LineItem.transaction_id == Transaction.id)
+            .where(
+                Transaction.posted_at >= period_start,
+                Transaction.posted_at <= period_end,
+            )
+            .group_by(LineItem.category_id)
+        )
+
+    for row in line_result:
+        cat = await session.get(Category, row.category_id)
+        if cat is None:
+            continue
+        if cat.is_income:
+            continue
+        spent = -row.spent  # negate expenses to positive
+        if spent <= 0:
+            continue
+        items.append({
+            "category_id": row.category_id,
+            "category_name": cat.name,
+            "spent_cents": spent,
+            "txn_count": row.cnt,
+        })
+        grand_total += spent
+
+    # Transactions with no line items at all (truly uncategorized)
+    from sqlalchemy import exists as sa_exists
+    no_li_result = await session.execute(
+        select(
+            func.coalesce(func.sum(Transaction.amount_cents), 0).label("spent"),
+            func.count(Transaction.id).label("cnt"),
+        )
+        .where(
+            Transaction.posted_at >= period_start,
+            Transaction.posted_at <= period_end,
+            ~sa_exists(
+                select(LineItem.id).where(LineItem.transaction_id == Transaction.id)
+            ),
+            Transaction.amount_cents < 0,
+        )
+    )
+    row = no_li_result.one()
+    if row.cnt > 0:
+        spent = -row.spent
+        items.append({
+            "category_id": None,
+            "category_name": "Uncategorized",
+            "spent_cents": spent,
+            "txn_count": row.cnt,
+        })
+        grand_total += spent
+
+    items.sort(key=lambda i: i["spent_cents"], reverse=True)
+    return {"total_cents": grand_total, "items": items}
+
+
+async def get_month_comparison(
+    session: AsyncSession,
+    current_ym: str,
+    prior_ym: str,
+    current_start: date,
+    current_end: date,
+    prior_start: date,
+    prior_end: date,
+) -> dict:
+    cur_budgets = await session.execute(
+        select(Budget).where(Budget.year_month == current_ym)
+    )
+    cur_budgets = list(cur_budgets.scalars().all())
+
+    pri_budgets = await session.execute(
+        select(Budget).where(Budget.year_month == prior_ym)
+    )
+    pri_budgets = list(pri_budgets.scalars().all())
+
+    all_cat_ids = {b.category_id for b in cur_budgets} | {b.category_id for b in pri_budgets}
+    if not all_cat_ids:
+        return {"current_month": current_ym, "prior_month": prior_ym, "items": []}
+
+    cur_budget_map = {b.category_id: b for b in cur_budgets}
+    pri_budget_map = {b.category_id: b for b in pri_budgets}
+
+    async def spending_map(cat_ids: set[int], start: date, end: date) -> dict[int, int]:
+        result = await session.execute(
+            select(
+                LineItem.category_id,
+                func.coalesce(func.sum(LineItem.amount_cents), 0).label("spent"),
+            )
+            .join(Transaction, LineItem.transaction_id == Transaction.id)
+            .where(
+                LineItem.category_id.in_(cat_ids),
+                Transaction.posted_at >= start,
+                Transaction.posted_at <= end,
+            )
+            .group_by(LineItem.category_id)
+        )
+        return {row.category_id: row.spent for row in result}
+
+    cur_spent = await spending_map(all_cat_ids, current_start, current_end)
+    pri_spent = await spending_map(all_cat_ids, prior_start, prior_end)
+
+    items = []
+    for cid in sorted(all_cat_ids):
+        cat = await session.get(Category, cid)
+        if cat is None:
+            continue
+        is_income = cat.is_income
+
+        raw_cur = cur_spent.get(cid, 0)
+        raw_pri = pri_spent.get(cid, 0)
+        cur_s = raw_cur if is_income else -raw_cur
+        pri_s = raw_pri if is_income else -raw_pri
+
+        items.append({
+            "category_id": cid,
+            "category_name": cat.name,
+            "category_icon": cat.icon,
+            "category_color": cat.color,
+            "current_budgeted_cents": cur_budget_map[cid].amount_cents if cid in cur_budget_map else 0,
+            "current_spent_cents": cur_s,
+            "prior_spent_cents": pri_s,
+            "prior_budgeted_cents": pri_budget_map[cid].amount_cents if cid in pri_budget_map else 0,
+        })
+
+    return {"current_month": current_ym, "prior_month": prior_ym, "items": items}
+
+
+async def seed_month(
+    session: AsyncSession, target_month: str
+) -> list[Budget]:
+    existing = await session.execute(
+        select(Budget).where(Budget.year_month == target_month)
+    )
+    if list(existing.scalars().all()):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Budgets already exist for {target_month}",
+        )
+
+    source_result = await session.execute(
+        select(Budget.year_month)
+        .where(Budget.year_month < target_month)
+        .distinct()
+        .order_by(Budget.year_month.desc())
+        .limit(1)
+    )
+    source_month = source_result.scalar_one_or_none()
+    if source_month is None:
+        raise HTTPException(
+            status_code=404,
+            detail="No prior month budgets to copy from",
+        )
+
+    source_budgets = await session.execute(
+        select(Budget).where(Budget.year_month == source_month)
+    )
+
+    target_start, _ = parse_month_param(target_month)
+    new_budgets = []
+    for b in source_budgets.scalars().all():
+        new_b = Budget(
+            category_id=b.category_id,
+            period=b.period,
+            amount_cents=b.amount_cents,
+            start_date=target_start,
+            end_date=None,
+            is_pinned=b.is_pinned,
+            year_month=target_month,
+        )
+        session.add(new_b)
+        new_budgets.append(new_b)
+
+    await session.commit()
+    for b in new_budgets:
+        await session.refresh(b)
+    return new_budgets

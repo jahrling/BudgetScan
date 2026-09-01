@@ -1,9 +1,9 @@
 import { useCallback, useMemo, useState } from "react";
-import { ChevronDown, ChevronLeft, ChevronUp, DollarSign, Pencil, Pin, PinOff, Plus, Sparkles, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown, ChevronLeft, ChevronUp, DollarSign, Pencil, Pin, PinOff, Plus, Sparkles, Trash2, X } from "lucide-react";
 import { Layout } from "../components/Layout";
+import { MonthSelector } from "../components/MonthSelector";
 import { Button } from "../components/ui/button";
 import { Label } from "../components/ui/label";
-import { Select } from "../components/ui/select";
 import { SegmentedControl } from "../components/ui/segmented-control";
 import { Dialog, DialogTitle } from "../components/ui/dialog";
 import { CategoryPicker } from "../components/CategoryPicker";
@@ -14,32 +14,27 @@ import {
   useCreateBudget,
   useDeleteBudget,
   useIncomeSummary,
+  useMonthComparison,
+  useSeedMonth,
   useSpendingSuggestions,
+  useUnbudgetedSpend,
   useUpdateBudget,
 } from "../hooks/useBudgets";
 import { useCategories } from "../hooks/useCategories";
 import { useTransactions } from "../hooks/useTransactions";
-import type { Budget, BudgetStatusItem, IncomeSummary as IncomeSummaryType } from "../types/models";
+import { currentMonth, formatMonthLabel } from "../lib/month-utils";
+import type { Budget, BudgetStatusItem, IncomeSummary as IncomeSummaryType, MonthComparisonItem } from "../types/models";
 import { cn } from "../lib/utils";
 
 interface FormState {
   id?: number;
   category_id: number | null;
   amount_cents: number;
-  period: string;
-  start_date: string;
-}
-
-function todayFirstOfMonth(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
 }
 
 const emptyForm: FormState = {
   category_id: null,
   amount_cents: 0,
-  period: "monthly",
-  start_date: todayFirstOfMonth(),
 };
 
 const viewOptions: Array<{ value: "plan" | "track"; label: string }> = [
@@ -47,43 +42,19 @@ const viewOptions: Array<{ value: "plan" | "track"; label: string }> = [
   { value: "track", label: "Track" },
 ];
 
-function healthColor(ratio: number): {
-  bg: string;
-  border: string;
-  text: string;
-  label: string;
-} {
-  if (ratio <= 0.9)
-    return {
-      bg: "bg-emerald-50",
-      border: "border-emerald-200",
-      text: "text-emerald-700",
-      label: "Healthy",
-    };
-  if (ratio <= 1.0)
-    return {
-      bg: "bg-amber-50",
-      border: "border-amber-200",
-      text: "text-amber-700",
-      label: "Tight",
-    };
-  return {
-    bg: "bg-red-50",
-    border: "border-red-200",
-    text: "text-red-700",
-    label: "Over",
-  };
-}
-
 export default function Budgets() {
-  const { data: budgets = [], isLoading } = useBudgets();
-  const { data: status = [] } = useBudgetStatus();
+  const [month, setMonth] = useState(currentMonth);
+  const { data: budgets = [], isLoading } = useBudgets(month);
+  const { data: status = [] } = useBudgetStatus(month);
   const { data: categories = [] } = useCategories();
   const { data: suggestions = [] } = useSpendingSuggestions(3);
-  const { data: incomeSummary } = useIncomeSummary();
+  const { data: incomeSummary } = useIncomeSummary(month);
+  const { data: unbudgetedData } = useUnbudgetedSpend(month);
+  const { data: comparison } = useMonthComparison(month);
   const createMut = useCreateBudget();
   const updateMut = useUpdateBudget();
   const deleteMut = useDeleteBudget();
+  const seedMut = useSeedMonth();
 
   const [view, setView] = useState<"plan" | "track">("track");
   const [modalOpen, setModalOpen] = useState(false);
@@ -91,22 +62,34 @@ export default function Budgets() {
   const [sliderEdits, setSliderEdits] = useState<Record<number, number>>({});
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
 
-  const catMap = new Map(categories.map((c) => [c.id, c.name]));
+  const catMap = useMemo(
+    () => new Map(categories.map((c) => [c.id, c.name])),
+    [categories],
+  );
   const incomeCatIds = useMemo(
     () => new Set(categories.filter((c) => c.is_income).map((c) => c.id)),
     [categories],
   );
-  const statusMap = new Map(status.map((s) => [s.category_id, s]));
+  const statusMap = useMemo(
+    () => new Map(status.map((s) => [s.category_id, s])),
+    [status],
+  );
   const suggestMap = useMemo(
     () => new Map(suggestions.map((s) => [s.category_id, s])),
     [suggestions],
   );
+  const comparisonMap = useMemo(() => {
+    if (!comparison) return new Map<number, MonthComparisonItem>();
+    return new Map(comparison.items.map((c) => [c.category_id, c]));
+  }, [comparison]);
 
   const totalBudgeted = budgets.reduce((sum, b) => {
     const edited = sliderEdits[b.id];
     return sum + (edited !== undefined ? edited : b.amount_cents);
   }, 0);
   const totalSpent = status.reduce((sum, s) => sum + s.spent_cents, 0);
+  const unbudgetedTotal = unbudgetedData?.total_cents ?? 0;
+  const incomeTotal = incomeSummary?.total_cents ?? 0;
 
   function openCreate() {
     setForm(emptyForm);
@@ -118,8 +101,6 @@ export default function Budgets() {
       id: b.id,
       category_id: b.category_id,
       amount_cents: b.amount_cents,
-      period: b.period,
-      start_date: b.start_date,
     });
     setModalOpen(true);
   }
@@ -132,15 +113,12 @@ export default function Budgets() {
         id: form.id,
         category_id: form.category_id,
         amount_cents: form.amount_cents,
-        period: form.period,
-        start_date: form.start_date,
       });
     } else {
       await createMut.mutateAsync({
         category_id: form.category_id,
         amount_cents: form.amount_cents,
-        period: form.period,
-        start_date: form.start_date,
+        year_month: month,
       });
     }
     setModalOpen(false);
@@ -181,19 +159,19 @@ export default function Budgets() {
     await createMut.mutateAsync({
       category_id: catId,
       amount_cents: cents,
-      period: "monthly",
-      start_date: todayFirstOfMonth(),
+      year_month: month,
     });
   };
 
   const existingCategoryIds = new Set(budgets.map((b) => b.category_id));
 
   return (
-    <Layout>
+    <Layout wide>
       {/* Header */}
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
         <h1 className="text-xl font-bold">Budgets</h1>
         <div className="flex items-center gap-2">
+          <MonthSelector month={month} onChange={setMonth} />
           <SegmentedControl value={view} onChange={setView} options={viewOptions} />
           {view === "plan" && (
             <Button size="sm" onClick={openCreate}>
@@ -204,6 +182,11 @@ export default function Budgets() {
         </div>
       </div>
 
+      {/* Auto-seed banner */}
+      {!isLoading && budgets.length === 0 && (
+        <SeedBanner month={month} onSeed={() => seedMut.mutate(month)} isPending={seedMut.isPending} />
+      )}
+
       {isLoading ? (
         <p className="text-gray-500 text-sm">Loading…</p>
       ) : view === "plan" ? (
@@ -211,7 +194,7 @@ export default function Budgets() {
         budgets.length === 0 ? (
           <div className="text-center py-8">
             <p className="text-gray-500 text-sm mb-3">
-              No budgets yet. Create one or auto-budget from spending history.
+              No budgets for this month. Create one or auto-budget from spending history.
             </p>
             {suggestions.length > 0 && (
               <AutoBudgetPanel
@@ -228,52 +211,52 @@ export default function Budgets() {
                 {incomeSummary && incomeSummary.total_cents > 0 && (
                   <IncomeBanner incomeSummary={incomeSummary} totalBudgeted={totalBudgeted} />
                 )}
-                {budgets.map((b) => {
-                  const catName = catMap.get(b.category_id) ?? "Unknown";
-                  const sug = suggestMap.get(b.category_id);
-                  const currentAmount =
-                    sliderEdits[b.id] !== undefined
-                      ? sliderEdits[b.id]
-                      : b.amount_cents;
-                  const isEdited =
-                    sliderEdits[b.id] !== undefined &&
-                    sliderEdits[b.id] !== b.amount_cents;
-
-                  return (
-                    <PlanRow
-                      key={b.id}
-                      budget={b}
-                      catName={catName}
-                      currentAmount={currentAmount}
-                      historicalAvg={sug?.avg_monthly_cents ?? null}
-                      isEdited={isEdited}
-                      onSliderChange={(cents) => handleSliderChange(b.id, cents)}
-                      onSuggest={() => applySuggestion(b)}
-                      onEdit={() => openEdit(b)}
-                      onDelete={() => handleDelete(b.id)}
-                      onTogglePin={() =>
-                        updateMut.mutate({ id: b.id, is_pinned: !b.is_pinned })
-                      }
-                      hasSuggestion={!!sug}
-                    />
-                  );
-                })}
+                {budgets
+                  .slice()
+                  .sort((a, b) => {
+                    if (a.is_pinned !== b.is_pinned) return a.is_pinned ? -1 : 1;
+                    const aIncome = incomeCatIds.has(a.category_id);
+                    const bIncome = incomeCatIds.has(b.category_id);
+                    if (aIncome !== bIncome) return aIncome ? -1 : 1;
+                    return (catMap.get(a.category_id) ?? "").localeCompare(
+                      catMap.get(b.category_id) ?? "",
+                    );
+                  })
+                  .map((b) => {
+                    const catName = catMap.get(b.category_id) ?? "Unknown";
+                    const sug = suggestMap.get(b.category_id);
+                    const edited = sliderEdits[b.id];
+                    return (
+                      <PlanRow
+                        key={b.id}
+                        budget={b}
+                        catName={catName}
+                        currentAmount={edited !== undefined ? edited : b.amount_cents}
+                        historicalAvg={sug?.avg_monthly_cents ?? null}
+                        isEdited={edited !== undefined}
+                        onSliderChange={(v) => handleSliderChange(b.id, v)}
+                        onSuggest={() => applySuggestion(b)}
+                        onEdit={() => openEdit(b)}
+                        onDelete={() => handleDelete(b.id)}
+                        onTogglePin={() =>
+                          updateMut.mutate({ id: b.id, is_pinned: !b.is_pinned })
+                        }
+                        hasSuggestion={!!sug}
+                      />
+                    );
+                  })}
               </div>
-
-              {suggestions.length > 0 && (
-                <aside className="mt-4 md:mt-0 md:sticky md:top-6 md:self-start">
-                  <AutoBudgetPanel
-                    suggestions={suggestions}
-                    existingCategoryIds={existingCategoryIds}
-                    onCreate={createBudgetFromSuggestion}
-                  />
-                </aside>
-              )}
+              <div className="mt-4 md:mt-0">
+                <AutoBudgetPanel
+                  suggestions={suggestions}
+                  existingCategoryIds={existingCategoryIds}
+                  onCreate={createBudgetFromSuggestion}
+                />
+              </div>
             </div>
-
             {hasPendingEdits && (
-              <div className="fixed bottom-16 left-0 right-0 z-10 bg-white/95 backdrop-blur border-t border-gray-200 px-4 py-3 md:sticky md:bottom-0 md:mt-3">
-                <div className="mx-auto max-w-lg md:max-w-none">
+              <div className="fixed bottom-16 left-0 right-0 z-10 md:sticky md:bottom-0 md:mt-4">
+                <div className="mx-auto max-w-lg md:max-w-none bg-white border border-sky-200 rounded-lg shadow-lg p-3">
                   <Button
                     onClick={saveAllEdits}
                     disabled={updateMut.isPending}
@@ -293,12 +276,17 @@ export default function Budgets() {
         budgets.length === 0 ? (
           <div className="text-center py-8">
             <p className="text-gray-500 text-sm">
-              No budgets to track yet — switch to Plan to set up budgets.
+              No budgets to track for this month — switch to Plan to set up budgets.
             </p>
           </div>
         ) : (
           <>
-            <HealthBanner totalBudgeted={totalBudgeted} totalSpent={totalSpent} />
+            <MonthSummaryBanner
+              incomeTotal={incomeTotal}
+              totalBudgeted={totalBudgeted}
+              totalSpent={totalSpent}
+              unbudgetedTotal={unbudgetedTotal}
+            />
             {(() => {
               const selectedStatus = selectedCategoryId ? statusMap.get(selectedCategoryId) : null;
               const selectedName = selectedCategoryId ? (catMap.get(selectedCategoryId) ?? "Unknown") : "";
@@ -306,6 +294,7 @@ export default function Budgets() {
               const budgetCards = budgets.map((b) => {
                 const catName = catMap.get(b.category_id) ?? "Unknown";
                 const st = statusMap.get(b.category_id);
+                const comp = comparisonMap.get(b.category_id);
                 return (
                   <TrackRow
                     key={b.id}
@@ -314,6 +303,7 @@ export default function Budgets() {
                     statusItem={st ?? null}
                     isIncome={incomeCatIds.has(b.category_id)}
                     selected={b.category_id === selectedCategoryId}
+                    priorSpent={comp?.prior_spent_cents ?? null}
                     onClick={() =>
                       setSelectedCategoryId(
                         b.category_id === selectedCategoryId ? null : b.category_id,
@@ -324,10 +314,11 @@ export default function Budgets() {
               });
 
               if (selectedCategoryId) {
-                const periodStart = selectedStatus?.period_start ?? todayFirstOfMonth();
+                const periodStart = selectedStatus?.period_start ?? `${month}-01`;
                 const periodEnd = selectedStatus?.period_end ?? (() => {
-                  const d = new Date();
-                  return new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().slice(0, 10);
+                  const [y, m] = month.split("-").map(Number);
+                  const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+                  return `${y}-${String(m).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
                 })();
 
                 return (
@@ -349,8 +340,12 @@ export default function Budgets() {
               }
 
               return (
-                <div className="md:grid md:grid-cols-2 md:gap-3 space-y-3 md:space-y-0">
+                <div className="md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-3 space-y-3 md:space-y-0">
                   {budgetCards}
+                  <UnbudgetedRow
+                    totalCents={unbudgetedTotal}
+                    items={unbudgetedData?.items ?? []}
+                  />
                 </div>
               );
             })()}
@@ -358,7 +353,7 @@ export default function Budgets() {
         )
       )}
 
-      {/* Create/Edit dialog (Plan only, but always mounted for transitions) */}
+      {/* Create/Edit dialog */}
       <Dialog open={modalOpen} onClose={() => setModalOpen(false)}>
         <DialogTitle>{form.id ? "Edit Budget" : "New Budget"}</DialogTitle>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -376,27 +371,6 @@ export default function Budgets() {
               onValueChange={(cents) =>
                 setForm({ ...form, amount_cents: cents })
               }
-            />
-          </div>
-          <div>
-            <Label>Period</Label>
-            <Select
-              value={form.period}
-              onChange={(e) => setForm({ ...form, period: e.target.value })}
-            >
-              <option value="monthly">Monthly</option>
-              <option value="weekly">Weekly</option>
-            </Select>
-          </div>
-          <div>
-            <Label>Start Date</Label>
-            <input
-              type="date"
-              value={form.start_date}
-              onChange={(e) =>
-                setForm({ ...form, start_date: e.target.value })
-              }
-              className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
             />
           </div>
           <div className="flex justify-end gap-2 pt-2">
@@ -426,67 +400,163 @@ export default function Budgets() {
 
 /* ── Sub-components ──────────────────────────────────────────── */
 
-function HealthBanner({
+function SeedBanner({
+  month,
+  onSeed,
+  isPending,
+}: {
+  month: string;
+  onSeed: () => void;
+  isPending: boolean;
+}) {
+  return (
+    <div className="rounded-lg border border-sky-200 bg-sky-50 p-3 mb-3 flex flex-wrap items-center justify-between gap-2">
+      <p className="text-sm text-sky-800">
+        No budgets for {formatMonthLabel(month)}. Copy from the previous month?
+      </p>
+      <Button size="sm" onClick={onSeed} disabled={isPending}>
+        {isPending ? "Copying…" : "Copy budgets"}
+      </Button>
+    </div>
+  );
+}
+
+function MonthSummaryBanner({
+  incomeTotal,
   totalBudgeted,
   totalSpent,
+  unbudgetedTotal,
 }: {
+  incomeTotal: number;
   totalBudgeted: number;
   totalSpent: number;
+  unbudgetedTotal: number;
 }) {
-  const ratio = totalBudgeted > 0 ? totalSpent / totalBudgeted : 0;
-  const c = healthColor(ratio);
-  const remaining = totalBudgeted - totalSpent;
+  const totalAllSpend = totalSpent + unbudgetedTotal;
+  const net = incomeTotal - totalAllSpend;
+  const barMax = Math.max(incomeTotal, totalAllSpend, 1);
+  const budgetedPct = (totalSpent / barMax) * 100;
+  const unbudgetedPct = (unbudgetedTotal / barMax) * 100;
+
+  return (
+    <div className={cn(
+      "rounded-lg border p-3 mb-3",
+      net >= 0 ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200",
+    )}>
+      {/* Desktop: horizontal stat row */}
+      <div className="hidden md:flex md:items-end md:justify-between md:gap-4 mb-2">
+        <StatCell label="Income" value={formatCents(incomeTotal)} color="text-emerald-700" />
+        <StatCell label="Budgeted" value={formatCents(totalBudgeted)} color="text-gray-500" />
+        <StatCell label="Actual spend" value={formatCents(totalSpent)} color="text-gray-900" />
+        <StatCell label="Unbudgeted" value={formatCents(unbudgetedTotal)} color="text-amber-700" />
+        <StatCell
+          label="Net"
+          value={`${net >= 0 ? "+" : ""}${formatCents(net)}`}
+          color={net >= 0 ? "text-emerald-700" : "text-red-600"}
+        />
+      </div>
+      {/* Mobile: stacked */}
+      <div className="md:hidden space-y-1 mb-2">
+        <div className="flex justify-between text-sm">
+          <span className="text-gray-600">Income</span>
+          <span className="font-semibold tabular-nums text-emerald-700">{formatCents(incomeTotal)}</span>
+        </div>
+        <div className="flex justify-between text-sm">
+          <span className="text-gray-600">Budgeted</span>
+          <span className="font-semibold tabular-nums text-gray-500">{formatCents(totalBudgeted)}</span>
+        </div>
+        <div className="flex justify-between text-sm">
+          <span className="text-gray-600">Actual spend</span>
+          <span className="font-semibold tabular-nums">{formatCents(totalSpent)}</span>
+        </div>
+        <div className="flex justify-between text-sm">
+          <span className="text-gray-600">Unbudgeted</span>
+          <span className="font-semibold tabular-nums text-amber-700">{formatCents(unbudgetedTotal)}</span>
+        </div>
+        <div className="flex justify-between text-sm border-t border-gray-200 pt-1">
+          <span className="text-gray-600 font-medium">Net</span>
+          <span className={cn("font-bold tabular-nums", net >= 0 ? "text-emerald-700" : "text-red-600")}>
+            {net >= 0 ? "+" : ""}{formatCents(net)}
+          </span>
+        </div>
+      </div>
+      {/* Progress bar */}
+      <div className="h-2 w-full bg-white/60 rounded-full overflow-hidden flex">
+        <div
+          className="h-full bg-sky-500 transition-all"
+          style={{ width: `${Math.min(budgetedPct, 100)}%` }}
+        />
+        <div
+          className="h-full bg-amber-400 transition-all"
+          style={{ width: `${Math.min(unbudgetedPct, 100 - Math.min(budgetedPct, 100))}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function StatCell({ label, value, color }: { label: string; value: string; color: string }) {
+  return (
+    <div>
+      <p className="text-xs text-gray-500">{label}</p>
+      <p className={cn("text-sm font-semibold tabular-nums", color)}>{value}</p>
+    </div>
+  );
+}
+
+function UnbudgetedRow({
+  totalCents,
+  items,
+}: {
+  totalCents: number;
+  items: Array<{ category_id: number | null; category_name: string; spent_cents: number; txn_count: number }>;
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  if (totalCents === 0 && items.length === 0) return null;
+
+  const totalTxns = items.reduce((s, i) => s + i.txn_count, 0);
 
   return (
     <div
-      className={cn(
-        "rounded-lg border p-3 mb-3",
-        c.bg,
-        c.border,
-      )}
+      className="rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 p-3 cursor-pointer"
+      onClick={() => setExpanded(!expanded)}
     >
-      <div className="flex items-center justify-between mb-2">
-        <span className={cn("text-xs font-medium", c.text)}>
-          {c.label}
-        </span>
-        <span className={cn("text-xs font-medium", c.text)}>
-          {Math.round(ratio * 100)}% used
+      <div className="flex items-center justify-between mb-1">
+        <h3 className="font-medium text-sm text-gray-700">Unbudgeted spending</h3>
+        <span className="text-sm font-semibold tabular-nums text-amber-700">
+          {formatCents(totalCents)}
         </span>
       </div>
-      <div className="flex justify-between text-sm">
-        <div>
-          <p className="text-xs text-gray-500">Budgeted</p>
-          <p className="font-semibold tabular-nums">{formatCents(totalBudgeted)}</p>
+      <p className="text-xs text-gray-500 mb-1">
+        {totalTxns} transaction{totalTxns !== 1 ? "s" : ""} not covered by a budget
+      </p>
+      {expanded && items.length > 0 && (
+        <div className="mt-2 space-y-1">
+          {items.map((item, i) => (
+            <div
+              key={item.category_id ?? `uncategorized-${i}`}
+              className="flex items-center justify-between bg-white rounded-md px-2.5 py-1.5 text-sm"
+            >
+              <span className={cn(
+                "text-gray-700",
+                item.category_id === null && "italic text-gray-500",
+              )}>
+                {item.category_name}
+              </span>
+              <span className="font-medium tabular-nums text-gray-900">
+                {formatCents(item.spent_cents)}
+              </span>
+            </div>
+          ))}
         </div>
-        <div className="text-center">
-          <p className="text-xs text-gray-500">Spent</p>
-          <p className="font-semibold tabular-nums">{formatCents(totalSpent)}</p>
-        </div>
-        <div className="text-right">
-          <p className="text-xs text-gray-500">Remaining</p>
-          <p
-            className={cn(
-              "font-semibold tabular-nums",
-              remaining < 0 ? "text-red-600" : "",
-            )}
-          >
-            {formatCents(remaining)}
-          </p>
-        </div>
-      </div>
-      <div className="mt-2 h-2 w-full bg-white/60 rounded-full overflow-hidden">
-        <div
-          className={cn(
-            "h-full rounded-full transition-all",
-            ratio > 1
-              ? "bg-red-500"
-              : ratio > 0.9
-                ? "bg-amber-500"
-                : "bg-emerald-500",
-          )}
-          style={{ width: `${Math.min(ratio * 100, 100)}%` }}
-        />
-      </div>
+      )}
+      {!expanded && items.length > 0 && (
+        <p className="text-xs text-gray-400">
+          {items.slice(0, 3).map((i) => `${i.category_name} ${formatCents(i.spent_cents)}`).join(" · ")}
+          {items.length > 3 && " …"}
+        </p>
+      )}
     </div>
   );
 }
@@ -661,14 +731,12 @@ function PlanRow({
         </div>
       </div>
 
-      {/* Budget amount */}
       <div className="flex justify-end text-xs mb-1">
         <span className={cn("font-medium", isEdited ? "text-sky-600" : "text-gray-900")}>
           {formatCents(currentAmount)}
         </span>
       </div>
 
-      {/* Slider with historical marker */}
       <div className="relative mb-1">
         <input
           type="range"
@@ -688,7 +756,6 @@ function PlanRow({
         )}
       </div>
 
-      {/* Historical comparison */}
       <div className="flex justify-between text-[11px] text-gray-400 mt-0.5">
         <span>$0</span>
         {historicalAvg !== null && (
@@ -713,6 +780,7 @@ function TrackRow({
   statusItem,
   isIncome,
   selected,
+  priorSpent,
   onClick,
 }: {
   budget: Budget;
@@ -720,6 +788,7 @@ function TrackRow({
   statusItem: BudgetStatusItem | null;
   isIncome: boolean;
   selected?: boolean;
+  priorSpent: number | null;
   onClick?: () => void;
 }) {
   const spent = statusItem?.spent_cents ?? 0;
@@ -728,6 +797,8 @@ function TrackRow({
   const pctUsed = statusItem?.percent_used ?? 0;
   const daysLeft = statusItem?.days_remaining ?? 0;
   const pctBar = budgeted > 0 ? (spent / budgeted) * 100 : 0;
+
+  const delta = priorSpent !== null ? spent - priorSpent : null;
 
   if (isIncome) {
     return (
@@ -763,6 +834,14 @@ function TrackRow({
             {Math.round(pctUsed)}%
           </span>
         </div>
+        {priorSpent !== null && (
+          <div className="text-[11px] text-gray-400 mt-1">
+            Last month: {formatCents(priorSpent)}
+            {delta !== null && delta !== 0 && (
+              <TrendIndicator delta={delta} isIncome />
+            )}
+          </div>
+        )}
       </div>
     );
   }
@@ -822,7 +901,30 @@ function TrackRow({
           </span>
         </div>
       </div>
+      {priorSpent !== null && (
+        <div className="text-[11px] text-gray-400 mt-1">
+          Last month: {formatCents(priorSpent)}
+          {delta !== null && delta !== 0 && (
+            <TrendIndicator delta={delta} />
+          )}
+        </div>
+      )}
     </div>
+  );
+}
+
+function TrendIndicator({ delta, isIncome }: { delta: number; isIncome?: boolean }) {
+  const up = delta > 0;
+  const good = isIncome ? up : !up;
+
+  return (
+    <span className={cn(
+      "inline-flex items-center ml-1",
+      good ? "text-emerald-600" : "text-red-500",
+    )}>
+      {up ? <ArrowUp className="h-3 w-3 inline" /> : <ArrowDown className="h-3 w-3 inline" />}
+      <span className="ml-0.5">{formatCents(Math.abs(delta))}</span>
+    </span>
   );
 }
 
@@ -940,8 +1042,8 @@ function BudgetTransactionPanel({
   const endDate = periodEnd.slice(0, 10);
   const params: Record<string, string> = {
     category_id: String(categoryId),
-    date_from: new Date(periodStart).toISOString(),
-    date_to: new Date(endDate + "T23:59:59").toISOString(),
+    date_from: periodStart,
+    date_to: endDate,
     sort: "posted_at:desc",
     limit: "200",
   };
@@ -978,7 +1080,9 @@ function BudgetTransactionPanel({
       ) : (
         <>
           <p className="text-xs text-gray-500 mb-2">
-            {total} transaction{total !== 1 ? "s" : ""}
+            {items.length < total
+              ? `Showing ${items.length} of ${total} transactions`
+              : `${total} transaction${total !== 1 ? "s" : ""}`}
             {" · "}
             {formatCents(items.reduce((s, t) => s + t.amount_cents, 0))} total
           </p>

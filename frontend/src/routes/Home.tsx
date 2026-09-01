@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { Layout } from "../components/Layout";
 import { SnapReceiptButton } from "../components/SnapReceiptButton";
 import { useBudgetStatus } from "../hooks/useBudgets";
+import { currentMonth } from "../lib/month-utils";
 import { useTransactions } from "../hooks/useTransactions";
 import { formatCents } from "../components/MoneyInput";
 import type { BudgetStatusItem, Transaction } from "../types/models";
@@ -123,7 +124,7 @@ function formatRelDate(iso: string): string {
 }
 
 export default function Home() {
-  const { data: statusItems, isLoading, error } = useBudgetStatus();
+  const { data: statusItems, isLoading, error } = useBudgetStatus(currentMonth());
   const weekStart = useMemo(() => startOfWeekISO(), []);
   const monthStart = useMemo(() => startOfMonthISO(), []);
 
