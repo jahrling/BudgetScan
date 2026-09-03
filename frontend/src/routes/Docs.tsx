@@ -27,7 +27,7 @@ function DocViewer({ slug, onBack }: { slug: string; onBack: () => void }) {
       <button
         type="button"
         onClick={onBack}
-        className="flex items-center gap-1 text-sm text-sky-600 mb-4"
+        className="flex items-center gap-1 text-sm text-sky-600 dark:text-sky-400 mb-4"
       >
         <ChevronLeft className="h-4 w-4" />
         All docs
@@ -38,7 +38,7 @@ function DocViewer({ slug, onBack }: { slug: string; onBack: () => void }) {
         <p className="text-sm text-red-600">Failed to load document.</p>
       )}
       {data && (
-        <article className="prose prose-sm md:prose-base prose-gray max-w-none bg-white rounded-xl border border-gray-200 p-4 md:p-8 shadow-sm">
+        <article className="prose prose-sm md:prose-base prose-gray dark:prose-invert max-w-none bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 md:p-8 shadow-sm">
           <Markdown>{data.content}</Markdown>
         </article>
       )}
@@ -64,7 +64,7 @@ export default function Docs() {
 
   return (
     <Layout>
-      <h1 className="text-lg font-semibold text-gray-900 mb-3">
+      <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">
         Project docs
       </h1>
 
@@ -73,7 +73,7 @@ export default function Docs() {
           {[1, 2].map((i) => (
             <div
               key={i}
-              className="h-14 bg-white rounded-xl border border-gray-200 animate-pulse"
+              className="h-14 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 animate-pulse"
             />
           ))}
         </div>
@@ -89,10 +89,10 @@ export default function Docs() {
             key={d.slug}
             type="button"
             onClick={() => setActiveSlug(d.slug)}
-            className="flex w-full items-center gap-3 bg-white rounded-xl border border-gray-200 px-4 py-3 shadow-sm text-left hover:border-sky-300 transition-colors"
+            className="flex w-full items-center gap-3 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 px-4 py-3 shadow-sm text-left hover:border-sky-300 dark:hover:border-sky-600 transition-colors"
           >
             <FileText className="h-5 w-5 text-gray-400 shrink-0" />
-            <span className="text-sm font-medium text-gray-900">
+            <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
               {d.slug.replace(/_/g, " ")}
             </span>
           </button>

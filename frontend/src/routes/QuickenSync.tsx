@@ -93,20 +93,20 @@ export default function QuickenSync() {
 
   return (
     <Layout>
-      <h1 className="text-lg font-semibold mb-3">Quicken sync</h1>
+      <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">Quicken sync</h1>
       <p className="text-sm text-gray-500 mb-4">
         Import QIF data from Quicken, export categorized splits back.
       </p>
 
       {/* Tab switcher */}
-      <div className="flex rounded-lg border border-gray-200 bg-gray-50 p-0.5 mb-4">
+      <div className="flex rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-0.5 mb-4">
         <button
           type="button"
           onClick={() => setActiveTab("import")}
           className={`flex-1 flex items-center justify-center gap-1.5 rounded-md py-2 text-sm font-medium transition-colors ${
             activeTab === "import"
-              ? "bg-white text-gray-900 shadow-sm"
-              : "text-gray-500 hover:text-gray-700"
+              ? "bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm"
+              : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
           }`}
         >
           <ArrowDownToLine className="h-4 w-4" />
@@ -117,8 +117,8 @@ export default function QuickenSync() {
           onClick={() => setActiveTab("export")}
           className={`flex-1 flex items-center justify-center gap-1.5 rounded-md py-2 text-sm font-medium transition-colors ${
             activeTab === "export"
-              ? "bg-white text-gray-900 shadow-sm"
-              : "text-gray-500 hover:text-gray-700"
+              ? "bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm"
+              : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
           }`}
         >
           <ArrowUpFromLine className="h-4 w-4" />
@@ -271,7 +271,7 @@ function ImportSection({
 
   return (
     <div>
-      <p className="text-sm text-gray-600 mb-3">
+      <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
         In Quicken: <strong>File → File Export → QIF</strong>, then
         drag-and-drop the file here — or click to browse.
       </p>
@@ -297,8 +297,8 @@ function ImportSection({
         }}
         className={`mb-4 flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-6 text-center cursor-pointer transition-colors ${
           localDragging
-            ? "border-sky-400 bg-sky-50"
-            : "border-gray-300 hover:border-sky-400"
+            ? "border-sky-400 bg-sky-50 dark:bg-sky-900/30"
+            : "border-gray-300 dark:border-gray-600 hover:border-sky-400"
         }`}
       >
         <input
@@ -318,7 +318,7 @@ function ImportSection({
           <p className="text-sm text-gray-500">Parsing{fileName ? ` ${fileName}` : ""}…</p>
         ) : (
           <>
-            <p className="text-sm font-medium">
+            <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
               {localDragging ? "Drop file here" : "Drag & drop a QIF file"}
             </p>
             <p className="mt-1 text-xs text-gray-500">or click to browse</p>
@@ -387,9 +387,9 @@ function CandidateReview({
   return (
     <div className="mt-4 space-y-3">
       {parsed.rule_persist_result && (parsed.rule_persist_result.created > 0 || parsed.rule_persist_result.updated > 0) && (
-        <div className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-800">
+        <div className="rounded-lg border border-sky-200 dark:border-sky-800 bg-sky-50 dark:bg-sky-900/30 p-3 text-sm text-sky-800 dark:text-sky-300">
           <p className="font-medium">Memorized rules imported</p>
-          <p className="text-xs mt-1 text-sky-700">
+          <p className="text-xs mt-1 text-sky-700 dark:text-sky-400">
             {parsed.rule_persist_result.created > 0 && `${parsed.rule_persist_result.created} created`}
             {parsed.rule_persist_result.created > 0 && parsed.rule_persist_result.updated > 0 && ", "}
             {parsed.rule_persist_result.updated > 0 && `${parsed.rule_persist_result.updated} updated`}
@@ -399,7 +399,7 @@ function CandidateReview({
       )}
 
       {parsed.errors.length > 0 && (
-        <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-800">
+        <div className="rounded-lg border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-900/30 p-3 text-sm text-red-800 dark:text-red-300">
           <p className="font-semibold mb-1">Errors:</p>
           <ul className="list-disc pl-4">
             {parsed.errors.map((e, i) => (
@@ -410,11 +410,11 @@ function CandidateReview({
       )}
 
       {parsed.unmapped_accounts.length > 0 && (
-        <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm">
+        <div className="rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/30 p-3 text-sm">
           <p className="font-semibold mb-2">Unmapped accounts</p>
           {parsed.unmapped_accounts.map((key) => (
             <div key={key} className="flex flex-wrap items-center gap-2 mb-2">
-              <code className="rounded bg-white px-2 py-1 text-xs">{key}</code>
+              <code className="rounded bg-white dark:bg-gray-800 px-2 py-1 text-xs">{key}</code>
               <Select
                 onChange={(e) => {
                   const v = Number(e.target.value);
@@ -458,8 +458,8 @@ function CandidateReview({
         const likelyDupCount = parsed.candidates.filter(c => c.match_status === "likely-duplicate").length;
         const autoSkipped = parsed.candidates.filter((c, i) => actions[i] === "skip" && c.match_status !== "new").length;
         return (
-          <div className="rounded-md bg-gray-50 border border-gray-200 p-3 text-xs text-gray-700 space-y-1">
-            <p className="font-medium text-sm text-gray-800">
+          <div className="rounded-md bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-3 text-xs text-gray-700 dark:text-gray-300 space-y-1">
+            <p className="font-medium text-sm text-gray-800 dark:text-gray-200">
               {parsed.candidates.length} transactions found
             </p>
             <p>
@@ -479,7 +479,7 @@ function CandidateReview({
       <button
         type="button"
         onClick={() => setExpanded(!expanded)}
-        className="flex w-full items-center justify-between text-sm font-medium text-gray-700 py-1"
+        className="flex w-full items-center justify-between text-sm font-medium text-gray-700 dark:text-gray-300 py-1"
       >
         <span>
           {expanded ? "Hide" : "Show"} transaction details
@@ -498,10 +498,10 @@ function CandidateReview({
               key={i}
               className={`rounded-lg border p-3 ${
                 actions[i] === "skip"
-                  ? "border-gray-200 bg-gray-50 opacity-60"
+                  ? "border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 opacity-60"
                   : c.match_status === "duplicate" || c.match_status === "likely-duplicate"
-                    ? "border-amber-200 bg-amber-50/30"
-                    : "border-gray-200 bg-white"
+                    ? "border-amber-200 dark:border-amber-800 bg-amber-50/30 dark:bg-amber-900/20"
+                    : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800"
               }`}
             >
               <div className="flex items-start justify-between gap-2">
@@ -546,8 +546,8 @@ function CandidateReview({
 
               {/* Comparison with existing transaction */}
               {c.match_transaction_id && c.match_description !== null && (
-                <div className="mt-2 rounded border border-gray-200 bg-gray-50 p-2 text-xs">
-                  <p className="font-medium text-gray-600 mb-1">
+                <div className="mt-2 rounded border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-2 text-xs">
+                  <p className="font-medium text-gray-600 dark:text-gray-400 mb-1">
                     Existing #{c.match_transaction_id}:
                   </p>
                   <div className="flex justify-between gap-2">
@@ -605,14 +605,14 @@ function CandidateReview({
       )}
 
       {/* Sticky Apply bar — sits above bottom nav on mobile, bottom of content on desktop */}
-      <div className="fixed bottom-16 left-0 right-0 z-10 bg-white/95 backdrop-blur border-t border-gray-200 px-4 py-3 md:sticky md:bottom-0 md:left-auto md:right-auto md:mt-2 md:rounded-lg md:border md:shadow-sm">
+      <div className="fixed bottom-16 left-0 right-0 z-10 bg-white/95 dark:bg-gray-900/95 backdrop-blur border-t border-gray-200 dark:border-gray-700 px-4 py-3 md:sticky md:bottom-0 md:left-auto md:right-auto md:mt-2 md:rounded-lg md:border md:shadow-sm">
         <div className="mx-auto max-w-lg md:max-w-none">
           {confirmResult ? (
             <div className="text-sm">
               {confirmResult.errors.length === 0 ? (
-                <div className="rounded-md bg-emerald-50 border border-emerald-200 p-3 text-center">
-                  <p className="font-medium text-emerald-800">Apply complete</p>
-                  <p className="text-emerald-700 mt-1">
+                <div className="rounded-md bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-800 p-3 text-center">
+                  <p className="font-medium text-emerald-800 dark:text-emerald-300">Apply complete</p>
+                  <p className="text-emerald-700 dark:text-emerald-400 mt-1">
                     Created {confirmResult.created_ids.length}
                     {confirmResult.overwritten_ids.length > 0 && `, overwritten ${confirmResult.overwritten_ids.length}`}
                     , merged {confirmResult.merged_ids.length}
@@ -620,9 +620,9 @@ function CandidateReview({
                   </p>
                 </div>
               ) : (
-                <div className="rounded-md bg-red-50 border border-red-200 p-3">
-                  <p className="font-medium text-red-800">Apply finished with errors</p>
-                  <p className="text-red-700 mt-1">
+                <div className="rounded-md bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 p-3">
+                  <p className="font-medium text-red-800 dark:text-red-300">Apply finished with errors</p>
+                  <p className="text-red-700 dark:text-red-400 mt-1">
                     {confirmResult.errors.join("; ")}
                   </p>
                   {(confirmResult.created_ids.length > 0 || confirmResult.merged_ids.length > 0) && (
@@ -635,8 +635,8 @@ function CandidateReview({
             </div>
           ) : confirmMut.isError ? (
             <div className="text-sm">
-              <div className="rounded-md bg-red-50 border border-red-200 p-3">
-                <p className="font-medium text-red-800">Apply failed</p>
+              <div className="rounded-md bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 p-3">
+                <p className="font-medium text-red-800 dark:text-red-300">Apply failed</p>
                 <p className="text-red-700 mt-1">{String(confirmMut.error)}</p>
               </div>
               <Button
@@ -690,7 +690,7 @@ function ExportSection() {
 
   return (
     <div>
-      <p className="text-sm text-gray-600 mb-3">
+      <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
         Import the QIF into Quicken: <strong>File → File Import → QIF</strong>.
         Choose "all accounts" and uncheck duplicates.
       </p>

@@ -16,11 +16,11 @@ export function Layout({ children, wide }: { children: ReactNode; wide?: boolean
   const location = useLocation();
 
   return (
-    <div className="min-h-screen bg-gray-50 md:flex">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 md:flex">
       {/* Desktop sidebar */}
-      <nav className="hidden md:flex md:flex-col md:w-48 lg:w-56 md:fixed md:inset-y-0 bg-white border-r border-gray-200">
+      <nav className="hidden md:flex md:flex-col md:w-48 lg:w-56 md:fixed md:inset-y-0 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700">
         <div className="px-4 py-5">
-          <span className="text-sm font-semibold text-gray-900">BudgetScan</span>
+          <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">BudgetScan</span>
         </div>
         <div className="flex-1 flex flex-col gap-0.5 px-2">
           {navItems.map(({ to, label, icon: Icon }) => {
@@ -33,8 +33,8 @@ export function Layout({ children, wide }: { children: ReactNode; wide?: boolean
                 className={cn(
                   "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
                   active
-                    ? "bg-sky-50 text-sky-700 font-medium"
-                    : "text-gray-600 hover:bg-gray-50 hover:text-gray-900",
+                    ? "bg-sky-50 dark:bg-sky-900/30 text-sky-700 dark:text-sky-300 font-medium"
+                    : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-gray-200",
                 )}
               >
                 <Icon className="h-4 w-4 shrink-0" />
@@ -54,7 +54,7 @@ export function Layout({ children, wide }: { children: ReactNode; wide?: boolean
       </main>
 
       {/* Mobile bottom tab bar */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 safe-area-pb md:hidden">
+      <nav className="fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 safe-area-pb md:hidden">
         <div className="mx-auto max-w-lg flex justify-around">
           {navItems.map(({ to, label, icon: Icon }) => {
             const active =
@@ -65,7 +65,7 @@ export function Layout({ children, wide }: { children: ReactNode; wide?: boolean
                 to={to}
                 className={cn(
                   "flex flex-col items-center py-2 px-3 text-xs transition-colors",
-                  active ? "text-sky-600" : "text-gray-500 hover:text-gray-700",
+                  active ? "text-sky-600 dark:text-sky-400" : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300",
                 )}
               >
                 <Icon className="h-5 w-5 mb-0.5" />

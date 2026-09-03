@@ -48,7 +48,7 @@ export function SplitEditor({ totalCents, items, onChange }: SplitEditorProps) {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-gray-700">
+        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
           Total: {formatCents(totalCents)}
         </span>
         <span
@@ -72,7 +72,7 @@ export function SplitEditor({ totalCents, items, onChange }: SplitEditorProps) {
       {items.map((item, idx) => (
         <div
           key={idx}
-          className="rounded-lg border border-gray-200 bg-white p-3 space-y-2"
+          className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 space-y-2"
         >
           <div className="flex items-center gap-2">
             <div className="flex-1 min-w-0">

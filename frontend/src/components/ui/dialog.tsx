@@ -28,7 +28,7 @@ export function Dialog({ open, onClose, children, className }: DialogProps) {
       />
       <div
         className={cn(
-          "relative z-10 rounded-lg bg-white p-6 shadow-xl max-w-lg w-[calc(100%-2rem)]",
+          "relative z-10 rounded-lg bg-white dark:bg-gray-800 p-6 shadow-xl max-w-lg w-[calc(100%-2rem)]",
           className,
         )}
       >
@@ -39,5 +39,5 @@ export function Dialog({ open, onClose, children, className }: DialogProps) {
 }
 
 export function DialogTitle({ children }: { children: ReactNode }) {
-  return <h2 className="text-lg font-semibold mb-4">{children}</h2>;
+  return <h2 className="text-lg font-semibold mb-4 text-gray-900 dark:text-gray-100">{children}</h2>;
 }

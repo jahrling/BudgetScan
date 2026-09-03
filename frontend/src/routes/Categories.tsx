@@ -116,7 +116,7 @@ export default function Categories() {
     if (!children.length) return null;
 
     return (
-      <ul className={cn(depth > 0 && "ml-4 border-l border-gray-200")}>
+      <ul className={cn(depth > 0 && "ml-4 border-l border-gray-200 dark:border-gray-700")}>
         {children.map((cat) => {
           const hasChildren = byParent.has(cat.id) &&
             (!matchingIds || (byParent.get(cat.id) ?? []).some((c) => matchingIds.has(c.id)));
@@ -126,8 +126,8 @@ export default function Categories() {
           return (
             <li key={cat.id}>
               <div className={cn(
-                "flex items-center gap-1 py-2 px-2 hover:bg-gray-50 rounded-md group",
-                isDirectMatch && "bg-sky-50",
+                "flex items-center gap-1 py-2 px-2 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-md group",
+                isDirectMatch && "bg-sky-50 dark:bg-sky-900/30",
               )}>
                 <button
                   onClick={() => hasChildren && toggleExpand(cat.id)}
@@ -144,12 +144,12 @@ export default function Categories() {
                 </button>
 
                 <span className={cn(
-                  "flex-1 text-sm font-medium truncate",
-                  isDirectMatch && "text-sky-700",
+                  "flex-1 text-sm font-medium truncate text-gray-900 dark:text-gray-100",
+                  isDirectMatch && "text-sky-700 dark:text-sky-300",
                 )}>
                   {cat.name}
                   {cat.source === "app" && (
-                    <span className="ml-1.5 inline-flex items-center rounded bg-sky-100 px-1 py-0.5 text-[10px] font-medium text-sky-700 align-middle">
+                    <span className="ml-1.5 inline-flex items-center rounded bg-sky-100 dark:bg-sky-900/40 px-1 py-0.5 text-[10px] font-medium text-sky-700 dark:text-sky-300 align-middle">
                       custom
                     </span>
                   )}
@@ -197,7 +197,7 @@ export default function Categories() {
   return (
     <Layout>
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-xl font-bold">Categories</h1>
+        <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Categories</h1>
         <Button size="sm" onClick={() => openCreate()}>
           <Plus className="h-4 w-4 mr-1" />
           Add
@@ -225,16 +225,16 @@ export default function Categories() {
       ) : matchingIds !== null && matchingIds.size === 0 ? (
         <p className="text-gray-500 text-sm">No categories match "{search}".</p>
       ) : (
-        <div className="bg-white rounded-lg border border-gray-200 p-2">
+        <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-2">
           {renderTree(null, 0)}
         </div>
       )}
 
       {/* Search index management */}
-      <div className="mt-6 rounded-lg border border-gray-200 bg-white p-3">
+      <div className="mt-6 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm font-medium text-gray-700">Search index</p>
+            <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Search index</p>
             <p className="text-xs text-gray-500">
               Rebuild the embedding index used for smart categorization
             </p>

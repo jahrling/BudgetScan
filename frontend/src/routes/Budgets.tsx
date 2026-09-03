@@ -169,7 +169,7 @@ export default function Budgets() {
     <Layout wide>
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-        <h1 className="text-xl font-bold">Budgets</h1>
+        <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Budgets</h1>
         <div className="flex items-center gap-2">
           <MonthSelector month={month} onChange={setMonth} />
           <SegmentedControl value={view} onChange={setView} options={viewOptions} />
@@ -256,7 +256,7 @@ export default function Budgets() {
             </div>
             {hasPendingEdits && (
               <div className="fixed bottom-16 left-0 right-0 z-10 md:sticky md:bottom-0 md:mt-4">
-                <div className="mx-auto max-w-lg md:max-w-none bg-white border border-sky-200 rounded-lg shadow-lg p-3">
+                <div className="mx-auto max-w-lg md:max-w-none bg-white dark:bg-gray-800 border border-sky-200 dark:border-sky-800 rounded-lg shadow-lg p-3">
                   <Button
                     onClick={saveAllEdits}
                     disabled={updateMut.isPending}
@@ -410,8 +410,8 @@ function SeedBanner({
   isPending: boolean;
 }) {
   return (
-    <div className="rounded-lg border border-sky-200 bg-sky-50 p-3 mb-3 flex flex-wrap items-center justify-between gap-2">
-      <p className="text-sm text-sky-800">
+    <div className="rounded-lg border border-sky-200 dark:border-sky-800 bg-sky-50 dark:bg-sky-900/30 p-3 mb-3 flex flex-wrap items-center justify-between gap-2">
+      <p className="text-sm text-sky-800 dark:text-sky-300">
         No budgets for {formatMonthLabel(month)}. Copy from the previous month?
       </p>
       <Button size="sm" onClick={onSeed} disabled={isPending}>
@@ -441,47 +441,47 @@ function MonthSummaryBanner({
   return (
     <div className={cn(
       "rounded-lg border p-3 mb-3",
-      net >= 0 ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200",
+      net >= 0 ? "bg-emerald-50 dark:bg-emerald-900/30 border-emerald-200 dark:border-emerald-800" : "bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-800",
     )}>
       {/* Desktop: horizontal stat row */}
       <div className="hidden md:flex md:items-end md:justify-between md:gap-4 mb-2">
-        <StatCell label="Income" value={formatCents(incomeTotal)} color="text-emerald-700" />
-        <StatCell label="Budgeted" value={formatCents(totalBudgeted)} color="text-gray-500" />
-        <StatCell label="Actual spend" value={formatCents(totalSpent)} color="text-gray-900" />
-        <StatCell label="Unbudgeted" value={formatCents(unbudgetedTotal)} color="text-amber-700" />
+        <StatCell label="Income" value={formatCents(incomeTotal)} color="text-emerald-700 dark:text-emerald-400" />
+        <StatCell label="Budgeted" value={formatCents(totalBudgeted)} color="text-gray-500 dark:text-gray-400" />
+        <StatCell label="Actual spend" value={formatCents(totalSpent)} color="text-gray-900 dark:text-gray-100" />
+        <StatCell label="Unbudgeted" value={formatCents(unbudgetedTotal)} color="text-amber-700 dark:text-amber-400" />
         <StatCell
           label="Net"
           value={`${net >= 0 ? "+" : ""}${formatCents(net)}`}
-          color={net >= 0 ? "text-emerald-700" : "text-red-600"}
+          color={net >= 0 ? "text-emerald-700 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}
         />
       </div>
       {/* Mobile: stacked */}
       <div className="md:hidden space-y-1 mb-2">
         <div className="flex justify-between text-sm">
-          <span className="text-gray-600">Income</span>
-          <span className="font-semibold tabular-nums text-emerald-700">{formatCents(incomeTotal)}</span>
+          <span className="text-gray-600 dark:text-gray-400">Income</span>
+          <span className="font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">{formatCents(incomeTotal)}</span>
         </div>
         <div className="flex justify-between text-sm">
-          <span className="text-gray-600">Budgeted</span>
-          <span className="font-semibold tabular-nums text-gray-500">{formatCents(totalBudgeted)}</span>
+          <span className="text-gray-600 dark:text-gray-400">Budgeted</span>
+          <span className="font-semibold tabular-nums text-gray-500 dark:text-gray-400">{formatCents(totalBudgeted)}</span>
         </div>
         <div className="flex justify-between text-sm">
-          <span className="text-gray-600">Actual spend</span>
-          <span className="font-semibold tabular-nums">{formatCents(totalSpent)}</span>
+          <span className="text-gray-600 dark:text-gray-400">Actual spend</span>
+          <span className="font-semibold tabular-nums text-gray-900 dark:text-gray-100">{formatCents(totalSpent)}</span>
         </div>
         <div className="flex justify-between text-sm">
-          <span className="text-gray-600">Unbudgeted</span>
-          <span className="font-semibold tabular-nums text-amber-700">{formatCents(unbudgetedTotal)}</span>
+          <span className="text-gray-600 dark:text-gray-400">Unbudgeted</span>
+          <span className="font-semibold tabular-nums text-amber-700 dark:text-amber-400">{formatCents(unbudgetedTotal)}</span>
         </div>
-        <div className="flex justify-between text-sm border-t border-gray-200 pt-1">
-          <span className="text-gray-600 font-medium">Net</span>
-          <span className={cn("font-bold tabular-nums", net >= 0 ? "text-emerald-700" : "text-red-600")}>
+        <div className="flex justify-between text-sm border-t border-gray-200 dark:border-gray-700 pt-1">
+          <span className="text-gray-600 dark:text-gray-400 font-medium">Net</span>
+          <span className={cn("font-bold tabular-nums", net >= 0 ? "text-emerald-700 dark:text-emerald-400" : "text-red-600 dark:text-red-400")}>
             {net >= 0 ? "+" : ""}{formatCents(net)}
           </span>
         </div>
       </div>
       {/* Progress bar */}
-      <div className="h-2 w-full bg-white/60 rounded-full overflow-hidden flex">
+      <div className="h-2 w-full bg-white/60 dark:bg-gray-700/60 rounded-full overflow-hidden flex">
         <div
           className="h-full bg-sky-500 transition-all"
           style={{ width: `${Math.min(budgetedPct, 100)}%` }}
@@ -498,7 +498,7 @@ function MonthSummaryBanner({
 function StatCell({ label, value, color }: { label: string; value: string; color: string }) {
   return (
     <div>
-      <p className="text-xs text-gray-500">{label}</p>
+      <p className="text-xs text-gray-500 dark:text-gray-400">{label}</p>
       <p className={cn("text-sm font-semibold tabular-nums", color)}>{value}</p>
     </div>
   );
@@ -519,12 +519,12 @@ function UnbudgetedRow({
 
   return (
     <div
-      className="rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 p-3 cursor-pointer"
+      className="rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 p-3 cursor-pointer"
       onClick={() => setExpanded(!expanded)}
     >
       <div className="flex items-center justify-between mb-1">
-        <h3 className="font-medium text-sm text-gray-700">Unbudgeted spending</h3>
-        <span className="text-sm font-semibold tabular-nums text-amber-700">
+        <h3 className="font-medium text-sm text-gray-700 dark:text-gray-300">Unbudgeted spending</h3>
+        <span className="text-sm font-semibold tabular-nums text-amber-700 dark:text-amber-400">
           {formatCents(totalCents)}
         </span>
       </div>
@@ -536,15 +536,15 @@ function UnbudgetedRow({
           {items.map((item, i) => (
             <div
               key={item.category_id ?? `uncategorized-${i}`}
-              className="flex items-center justify-between bg-white rounded-md px-2.5 py-1.5 text-sm"
+              className="flex items-center justify-between bg-white dark:bg-gray-700 rounded-md px-2.5 py-1.5 text-sm"
             >
               <span className={cn(
-                "text-gray-700",
-                item.category_id === null && "italic text-gray-500",
+                "text-gray-700 dark:text-gray-300",
+                item.category_id === null && "italic text-gray-500 dark:text-gray-400",
               )}>
                 {item.category_name}
               </span>
-              <span className="font-medium tabular-nums text-gray-900">
+              <span className="font-medium tabular-nums text-gray-900 dark:text-gray-100">
                 {formatCents(item.spent_cents)}
               </span>
             </div>
@@ -577,8 +577,8 @@ function IncomeBanner({
       className={cn(
         "rounded-lg border p-3 mb-2",
         coversExpenses
-          ? "bg-sky-50 border-sky-200"
-          : "bg-amber-50 border-amber-200",
+          ? "bg-sky-50 dark:bg-sky-900/30 border-sky-200 dark:border-sky-800"
+          : "bg-amber-50 dark:bg-amber-900/30 border-amber-200 dark:border-amber-800",
       )}
     >
       <button
@@ -592,7 +592,7 @@ function IncomeBanner({
           )} />
           <span className={cn(
             "text-sm font-medium",
-            coversExpenses ? "text-sky-800" : "text-amber-800",
+            coversExpenses ? "text-sky-800 dark:text-sky-300" : "text-amber-800 dark:text-amber-300",
           )}>
             Income this month
           </span>
@@ -600,7 +600,7 @@ function IncomeBanner({
         <div className="flex items-center gap-2">
           <span className={cn(
             "text-sm font-semibold tabular-nums",
-            coversExpenses ? "text-sky-700" : "text-amber-700",
+            coversExpenses ? "text-sky-700 dark:text-sky-400" : "text-amber-700 dark:text-amber-400",
           )}>
             {formatCents(incomeSummary.total_cents)}
           </span>
@@ -616,10 +616,10 @@ function IncomeBanner({
           {incomeSummary.categories.map((cat) => (
             <div
               key={cat.category_id}
-              className="flex items-center justify-between bg-white/60 rounded-md px-2.5 py-1.5 text-sm"
+              className="flex items-center justify-between bg-white/60 dark:bg-gray-700/60 rounded-md px-2.5 py-1.5 text-sm"
             >
-              <span className="text-gray-700">{cat.category_name}</span>
-              <span className="font-medium tabular-nums text-gray-900">
+              <span className="text-gray-700 dark:text-gray-300">{cat.category_name}</span>
+              <span className="font-medium tabular-nums text-gray-900 dark:text-gray-100">
                 {formatCents(cat.amount_cents)}
               </span>
             </div>
@@ -679,13 +679,13 @@ function PlanRow({
   return (
     <div
       className={cn(
-        "bg-white rounded-lg border p-3",
-        isEdited ? "border-sky-300 shadow-sm" : "border-gray-200",
+        "bg-white dark:bg-gray-800 rounded-lg border p-3",
+        isEdited ? "border-sky-300 dark:border-sky-700 shadow-sm" : "border-gray-200 dark:border-gray-700",
       )}
     >
       <div className="flex items-start justify-between mb-2">
         <div className="flex items-center gap-2">
-          <h3 className="font-medium text-sm">{catName}</h3>
+          <h3 className="font-medium text-sm text-gray-900 dark:text-gray-100">{catName}</h3>
           {budget.is_pinned && (
             <Pin className="h-3 w-3 text-sky-500 fill-sky-500" />
           )}
@@ -732,7 +732,7 @@ function PlanRow({
       </div>
 
       <div className="flex justify-end text-xs mb-1">
-        <span className={cn("font-medium", isEdited ? "text-sky-600" : "text-gray-900")}>
+        <span className={cn("font-medium", isEdited ? "text-sky-600 dark:text-sky-400" : "text-gray-900 dark:text-gray-100")}>
           {formatCents(currentAmount)}
         </span>
       </div>
@@ -804,22 +804,22 @@ function TrackRow({
     return (
       <div
         className={cn(
-          "rounded-lg border bg-emerald-50/50 p-3 cursor-pointer transition-colors",
-          selected ? "border-sky-500 ring-1 ring-sky-500" : "border-emerald-200 hover:border-emerald-300",
+          "rounded-lg border bg-emerald-50/50 dark:bg-emerald-900/20 p-3 cursor-pointer transition-colors",
+          selected ? "border-sky-500 ring-1 ring-sky-500" : "border-emerald-200 dark:border-emerald-800 hover:border-emerald-300",
         )}
         onClick={onClick}
       >
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
-            <h3 className="font-medium text-sm text-emerald-900">{catName}</h3>
-            <span className="text-[10px] font-medium text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded-full">
+            <h3 className="font-medium text-sm text-emerald-900 dark:text-emerald-300">{catName}</h3>
+            <span className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/40 px-1.5 py-0.5 rounded-full">
               income
             </span>
           </div>
-          <span className="text-[11px] text-emerald-500">{daysLeft}d left</span>
+          <span className="text-[11px] text-emerald-500 dark:text-emerald-400">{daysLeft}d left</span>
         </div>
 
-        <div className="w-full bg-emerald-100 rounded-full h-2.5 overflow-hidden mb-2">
+        <div className="w-full bg-emerald-100 dark:bg-emerald-900/40 rounded-full h-2.5 overflow-hidden mb-2">
           <div
             className="h-full rounded-full transition-all bg-emerald-500"
             style={{ width: `${Math.min(pctBar, 100)}%` }}
@@ -849,14 +849,14 @@ function TrackRow({
   return (
     <div
       className={cn(
-        "bg-white rounded-lg border p-3 cursor-pointer transition-colors",
-        selected ? "border-sky-500 ring-1 ring-sky-500" : "border-gray-200 hover:border-gray-300",
+        "bg-white dark:bg-gray-800 rounded-lg border p-3 cursor-pointer transition-colors",
+        selected ? "border-sky-500 ring-1 ring-sky-500" : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600",
       )}
       onClick={onClick}
     >
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
-          <h3 className="font-medium text-sm">{catName}</h3>
+          <h3 className="font-medium text-sm text-gray-900 dark:text-gray-100">{catName}</h3>
           {budget.is_pinned && (
             <Pin className="h-3 w-3 text-sky-500 fill-sky-500" />
           )}
@@ -864,7 +864,7 @@ function TrackRow({
         <span className="text-[11px] text-gray-400">{daysLeft}d left</span>
       </div>
 
-      <div className="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden mb-2">
+      <div className="w-full bg-gray-100 dark:bg-gray-700 rounded-full h-2.5 overflow-hidden mb-2">
         <div
           className={cn(
             "h-full rounded-full transition-all",
@@ -882,7 +882,7 @@ function TrackRow({
           <span
             className={cn(
               "font-medium tabular-nums",
-              remaining < 0 ? "text-red-600" : "text-gray-900",
+              remaining < 0 ? "text-red-600 dark:text-red-400" : "text-gray-900 dark:text-gray-100",
             )}
           >
             {formatCents(remaining)} left
@@ -891,10 +891,10 @@ function TrackRow({
             className={cn(
               "text-[10px] font-medium px-1.5 py-0.5 rounded-full",
               pctBar > 100
-                ? "bg-red-100 text-red-700"
+                ? "bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300"
                 : pctBar > 80
-                  ? "bg-amber-100 text-amber-700"
-                  : "bg-emerald-100 text-emerald-700",
+                  ? "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300"
+                  : "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300",
             )}
           >
             {Math.round(pctUsed)}%
@@ -973,11 +973,11 @@ function AutoBudgetPanel({
   }
 
   return (
-    <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-3 mb-1">
+    <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-900/20 p-3 mb-1">
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-1.5">
           <Sparkles className="h-4 w-4 text-amber-500" />
-          <span className="text-sm font-medium text-amber-800">
+          <span className="text-sm font-medium text-amber-800 dark:text-amber-300">
             Suggested budgets
           </span>
         </div>
@@ -990,14 +990,14 @@ function AutoBudgetPanel({
           </button>
         )}
       </div>
-      <p className="text-xs text-amber-700 mb-2">
+      <p className="text-xs text-amber-700 dark:text-amber-400 mb-2">
         Based on your last 3 months of spending:
       </p>
       <div className="space-y-1.5">
         {top.map((s) => (
           <div
             key={s.category_id}
-            className="flex items-center justify-between bg-white rounded-md px-2.5 py-1.5 border border-amber-100"
+            className="flex items-center justify-between bg-white dark:bg-gray-800 rounded-md px-2.5 py-1.5 border border-amber-100 dark:border-amber-800/50"
           >
             <div className="min-w-0">
               <span className="text-sm font-medium truncate block">
@@ -1062,7 +1062,7 @@ function BudgetTransactionPanel({
             <ChevronLeft className="h-4 w-4" />
             Back to budgets
           </button>
-          <h3 className="font-semibold text-sm">{categoryName}</h3>
+          <h3 className="font-semibold text-sm text-gray-900 dark:text-gray-100">{categoryName}</h3>
           <p className="text-xs text-gray-500">
             {new Date(periodStart).toLocaleDateString()} – {new Date(periodEnd).toLocaleDateString()}
           </p>
@@ -1086,11 +1086,11 @@ function BudgetTransactionPanel({
             {" · "}
             {formatCents(items.reduce((s, t) => s + t.amount_cents, 0))} total
           </p>
-          <div className="divide-y divide-gray-100 border border-gray-200 rounded-lg overflow-hidden">
+          <div className="divide-y divide-gray-100 dark:divide-gray-700 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
             {items.map((t) => (
-              <div key={t.id} className="flex items-center justify-between px-3 py-2 bg-white">
+              <div key={t.id} className="flex items-center justify-between px-3 py-2 bg-white dark:bg-gray-800">
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium truncate text-gray-900">
+                  <p className="text-sm font-medium truncate text-gray-900 dark:text-gray-100">
                     {t.merchant_name || t.description || "—"}
                   </p>
                   <p className="text-xs text-gray-500">

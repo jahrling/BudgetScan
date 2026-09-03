@@ -37,11 +37,11 @@ function pickTop(items: BudgetStatusItem[]): BudgetStatusItem[] {
 }
 
 function colorFor(pct: number): { bar: string; pill: string } {
-  if (pct < 0) return { bar: "bg-gray-400", pill: "bg-gray-100 text-gray-600" };
-  if (pct < 20) return { bar: "bg-red-500", pill: "bg-red-50 text-red-700" };
+  if (pct < 0) return { bar: "bg-gray-400", pill: "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400" };
+  if (pct < 20) return { bar: "bg-red-500", pill: "bg-red-50 dark:bg-red-900/40 text-red-700 dark:text-red-300" };
   if (pct < 50)
-    return { bar: "bg-amber-500", pill: "bg-amber-50 text-amber-700" };
-  return { bar: "bg-emerald-500", pill: "bg-emerald-50 text-emerald-700" };
+    return { bar: "bg-amber-500", pill: "bg-amber-50 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300" };
+  return { bar: "bg-emerald-500", pill: "bg-emerald-50 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300" };
 }
 
 function BudgetCard({ b }: { b: BudgetStatusItem }) {
@@ -49,7 +49,7 @@ function BudgetCard({ b }: { b: BudgetStatusItem }) {
   const c = colorFor(pct);
   const usedPct = Math.min(100, Math.max(0, b.percent_used));
   return (
-    <div className="bg-white rounded-xl border border-gray-200 px-3 py-2.5 shadow-sm">
+    <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 px-3 py-2.5 shadow-sm">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <span
@@ -77,7 +77,7 @@ function BudgetCard({ b }: { b: BudgetStatusItem }) {
           <div
             className={cn(
               "font-semibold text-sm tabular-nums",
-              b.remaining_cents < 0 ? "text-red-600" : "text-gray-900",
+              b.remaining_cents < 0 ? "text-red-600 dark:text-red-400" : "text-gray-900 dark:text-gray-100",
             )}
           >
             {formatCents(b.remaining_cents)}
@@ -87,7 +87,7 @@ function BudgetCard({ b }: { b: BudgetStatusItem }) {
           </div>
         </div>
       </div>
-      <div className="mt-2 h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
+      <div className="mt-2 h-1.5 w-full bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
         <div
           className={cn("h-full rounded-full transition-all", c.bar)}
           style={{ width: `${usedPct}%` }}
@@ -147,7 +147,7 @@ export default function Home() {
       {/* Above the fold */}
       <section>
         <div className="flex items-center justify-between mb-2 pt-1">
-          <h1 className="text-lg font-semibold text-gray-900">
+          <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
             What I can spend
           </h1>
           <Link
@@ -164,7 +164,7 @@ export default function Home() {
             {Array.from({ length: 4 }).map((_, i) => (
               <div
                 key={i}
-                className="h-16 bg-white rounded-xl border border-gray-200 animate-pulse"
+                className="h-16 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 animate-pulse"
               />
             ))}
           </div>
@@ -177,8 +177,8 @@ export default function Home() {
         )}
 
         {!isLoading && top.length === 0 && (
-          <div className="bg-white rounded-xl border border-dashed border-gray-300 p-6 text-center">
-            <p className="text-sm text-gray-600 mb-3">
+          <div className="bg-white dark:bg-gray-800 rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-6 text-center">
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
               No budgets set up yet.
             </p>
             <Link
@@ -205,7 +205,7 @@ export default function Home() {
             onClick={() => setTxnsOpen((v) => !v)}
             className="flex w-full items-center justify-between py-2"
           >
-            <h2 className="text-sm font-semibold text-gray-700">
+            <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
               This week’s transactions
               {weekTxns.data && (
                 <span className="ml-2 text-xs font-normal text-gray-500">
@@ -222,7 +222,7 @@ export default function Home() {
           {txnsOpen && (
             <div className="space-y-1.5">
               {weekTxns.isLoading && (
-                <div className="h-12 bg-white rounded-lg border border-gray-200 animate-pulse" />
+                <div className="h-12 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 animate-pulse" />
               )}
               {weekTxns.data && weekTxns.data.items.length === 0 && (
                 <p className="text-xs text-gray-500 px-1">
@@ -233,17 +233,17 @@ export default function Home() {
                 <Link
                   key={t.id}
                   to={`/transactions?open=${t.id}`}
-                  className="flex items-center justify-between bg-white rounded-lg border border-gray-200 px-3 py-2"
+                  className="flex items-center justify-between bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2"
                 >
                   <div className="min-w-0">
-                    <div className="text-sm font-medium truncate">
+                    <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
                       {t.merchant_name ?? t.description ?? "Transaction"}
                     </div>
                     <div className="text-[11px] text-gray-500">
                       {formatRelDate(t.posted_at)}
                     </div>
                   </div>
-                  <div className="text-sm font-semibold tabular-nums">
+                  <div className="text-sm font-semibold tabular-nums text-gray-900 dark:text-gray-100">
                     {formatCents(t.amount_cents)}
                   </div>
                 </Link>
@@ -253,11 +253,11 @@ export default function Home() {
         </section>
 
         <section className="mt-6 md:mt-0">
-          <h2 className="text-sm font-semibold text-gray-700 py-2">
+          <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 py-2">
             Top merchants this period
           </h2>
           {monthTxns.isLoading && (
-            <div className="h-12 bg-white rounded-lg border border-gray-200 animate-pulse" />
+            <div className="h-12 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 animate-pulse" />
           )}
           {monthTxns.data && topMerchants.length === 0 && (
             <p className="text-xs text-gray-500 px-1">No spending yet.</p>
@@ -266,15 +266,15 @@ export default function Home() {
             {topMerchants.map((m) => (
               <div
                 key={m.name}
-                className="flex items-center justify-between bg-white rounded-lg border border-gray-200 px-3 py-2"
+                className="flex items-center justify-between bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2"
               >
                 <div className="min-w-0">
-                  <div className="text-sm font-medium truncate">{m.name}</div>
+                  <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{m.name}</div>
                   <div className="text-[11px] text-gray-500">
                     {m.count} {m.count === 1 ? "visit" : "visits"}
                   </div>
                 </div>
-                <div className="text-sm font-semibold tabular-nums">
+                <div className="text-sm font-semibold tabular-nums text-gray-900 dark:text-gray-100">
                   {formatCents(m.total)}
                 </div>
               </div>
