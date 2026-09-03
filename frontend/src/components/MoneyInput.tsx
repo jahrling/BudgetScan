@@ -1,4 +1,4 @@
-import { forwardRef, useState, type InputHTMLAttributes } from "react";
+import { forwardRef, type InputHTMLAttributes } from "react";
 import { cn } from "../lib/utils";
 
 interface MoneyInputProps
@@ -10,32 +10,21 @@ interface MoneyInputProps
 }
 
 export const MoneyInput = forwardRef<HTMLInputElement, MoneyInputProps>(
-  ({ valueCents, onValueChange, className, ...props }, ref) => {
-    const [editing, setEditing] = useState(false);
-    const [draft, setDraft] = useState("");
+  ({ valueCents, onValueChange, className, onKeyDown, ...props }, ref) => {
+    const cents = valueCents ?? 0;
+    const display = (cents / 100).toFixed(2);
 
-    const display =
-      valueCents !== undefined ? (valueCents / 100).toFixed(2) : "";
+    function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+      onKeyDown?.(e);
+      if (e.defaultPrevented) return;
 
-    function handleFocus(e: React.FocusEvent<HTMLInputElement>) {
-      setDraft(e.target.value);
-      setEditing(true);
-      e.target.select();
-    }
-
-    function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
-      const raw = e.target.value;
-      setDraft(raw);
-      const val = parseFloat(raw);
-      if (!isNaN(val) && val >= 0) {
-        onValueChange(Math.round(val * 100));
-      } else if (raw === "") {
-        onValueChange(0);
+      if (e.key >= "0" && e.key <= "9") {
+        e.preventDefault();
+        onValueChange(cents * 10 + parseInt(e.key));
+      } else if (e.key === "Backspace") {
+        e.preventDefault();
+        onValueChange(Math.floor(cents / 10));
       }
-    }
-
-    function handleBlur() {
-      setEditing(false);
     }
 
     return (
@@ -45,15 +34,13 @@ export const MoneyInput = forwardRef<HTMLInputElement, MoneyInputProps>(
         </span>
         <input
           ref={ref}
-          type="number"
-          step="0.01"
-          min="0"
-          value={editing ? draft : display}
-          onFocus={handleFocus}
-          onChange={handleChange}
-          onBlur={handleBlur}
+          type="text"
+          inputMode="numeric"
+          value={display}
+          onKeyDown={handleKeyDown}
+          onChange={() => {}}
           className={cn(
-            "flex h-10 w-full rounded-md border border-gray-300 bg-white pl-7 pr-3 py-2 text-sm placeholder:text-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 disabled:cursor-not-allowed disabled:opacity-50",
+            "flex h-10 w-full rounded-md border border-gray-300 bg-white pl-7 pr-3 py-2 text-sm text-right placeholder:text-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 disabled:cursor-not-allowed disabled:opacity-50",
             className,
           )}
           {...props}

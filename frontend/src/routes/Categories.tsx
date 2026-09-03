@@ -148,6 +148,11 @@ export default function Categories() {
                   isDirectMatch && "text-sky-700",
                 )}>
                   {cat.name}
+                  {cat.source === "app" && (
+                    <span className="ml-1.5 inline-flex items-center rounded bg-sky-100 px-1 py-0.5 text-[10px] font-medium text-sky-700 align-middle">
+                      custom
+                    </span>
+                  )}
                 </span>
 
                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">

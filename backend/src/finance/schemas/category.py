@@ -18,6 +18,7 @@ class CategoryRead(BaseModel):
     color: str | None
     icon: str | None
     is_income: bool
+    source: str
     created_at: datetime
     updated_at: datetime
 

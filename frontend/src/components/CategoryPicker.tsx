@@ -19,6 +19,7 @@ interface FlatOption {
   name: string;
   depth: number;
   parentName: string | null;
+  source: string;
 }
 
 function buildOptions(
@@ -46,6 +47,7 @@ function buildOptions(
         name: c.name,
         depth,
         parentName: parent?.name ?? null,
+        source: c.source,
       });
       walk(c.id, depth + 1);
     }
@@ -185,6 +187,11 @@ export function CategoryPicker({
                   onClick={() => select(o.id)}
                 >
                   <span>{o.name}</span>
+                  {o.source === "app" && (
+                    <span className="ml-1 inline-flex items-center rounded bg-sky-100 px-1 py-0.5 text-[10px] font-medium text-sky-700 align-middle">
+                      custom
+                    </span>
+                  )}
                   {o.parentName && (
                     <span className="ml-1.5 text-xs text-gray-400">
                       in {o.parentName}

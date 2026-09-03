@@ -76,6 +76,34 @@ async def delete_budget(session: AsyncSession, budget_id: int) -> None:
     await session.commit()
 
 
+async def _build_children_map(session: AsyncSession) -> dict[int, list[int]]:
+    result = await session.execute(select(Category.id, Category.parent_id))
+    children_map: dict[int, list[int]] = {}
+    for cat_id, parent_id in result:
+        if parent_id is not None:
+            children_map.setdefault(parent_id, []).append(cat_id)
+    return children_map
+
+
+def _collect_effective_ids(
+    cat_id: int,
+    children_map: dict[int, list[int]],
+    budgeted_ids: set[int],
+    is_root: bool = True,
+) -> set[int]:
+    """Walk from cat_id collecting it and descendants, stopping at any
+    descendant that has its own budget (that subtree belongs to the
+    child budget instead)."""
+    result = set()
+    if is_root or cat_id not in budgeted_ids:
+        result.add(cat_id)
+        for child_id in children_map.get(cat_id, []):
+            result |= _collect_effective_ids(
+                child_id, children_map, budgeted_ids, is_root=False
+            )
+    return result
+
+
 async def get_budget_status(
     session: AsyncSession,
     period_start: date,
@@ -90,7 +118,17 @@ async def get_budget_status(
     if not active_budgets:
         return []
 
-    category_ids = [b.category_id for b in active_budgets]
+    budgeted_ids = {b.category_id for b in active_budgets}
+    children_map = await _build_children_map(session)
+
+    effective_per_budget: dict[int, set[int]] = {}
+    all_effective_ids: set[int] = set()
+    for b in active_budgets:
+        effective = _collect_effective_ids(
+            b.category_id, children_map, budgeted_ids
+        )
+        effective_per_budget[b.category_id] = effective
+        all_effective_ids |= effective
 
     spending_result = await session.execute(
         select(
@@ -99,13 +137,13 @@ async def get_budget_status(
         )
         .join(Transaction, LineItem.transaction_id == Transaction.id)
         .where(
-            LineItem.category_id.in_(category_ids),
+            LineItem.category_id.in_(all_effective_ids),
             Transaction.posted_at >= period_start,
             Transaction.posted_at <= period_end,
         )
         .group_by(LineItem.category_id)
     )
-    spent_map: dict[int, int] = {
+    per_category_spent: dict[int, int] = {
         row.category_id: row.spent for row in spending_result
     }
 
@@ -114,7 +152,8 @@ async def get_budget_status(
 
     results = []
     for b in active_budgets:
-        raw_spent = spent_map.get(b.category_id, 0)
+        effective = effective_per_budget[b.category_id]
+        raw_spent = sum(per_category_spent.get(cid, 0) for cid in effective)
         is_income = b.category.is_income if b.category else False
         spent = raw_spent if is_income else -raw_spent
         remaining = b.amount_cents - spent
@@ -254,8 +293,12 @@ async def get_unbudgeted_spend(
         select(Budget.category_id).where(Budget.year_month == year_month)
     )
     budgeted_ids = {row[0] for row in budgeted_ids_result}
+    children_map = await _build_children_map(session)
+    covered_ids: set[int] = set()
+    for bid in budgeted_ids:
+        covered_ids |= _collect_effective_ids(bid, children_map, budgeted_ids)
     income_ids = await _income_category_ids(session)
-    excluded_ids = budgeted_ids | income_ids
+    excluded_ids = covered_ids | income_ids
 
     items: list[dict] = []
     grand_total = 0
@@ -364,7 +407,26 @@ async def get_month_comparison(
     cur_budget_map = {b.category_id: b for b in cur_budgets}
     pri_budget_map = {b.category_id: b for b in pri_budgets}
 
-    async def spending_map(cat_ids: set[int], start: date, end: date) -> dict[int, int]:
+    children_map = await _build_children_map(session)
+    cur_budgeted_ids = {b.category_id for b in cur_budgets}
+    pri_budgeted_ids = {b.category_id for b in pri_budgets}
+
+    cur_effective: dict[int, set[int]] = {}
+    pri_effective: dict[int, set[int]] = {}
+    all_effective_ids: set[int] = set()
+    for cid in all_cat_ids:
+        if cid in cur_budgeted_ids:
+            eff = _collect_effective_ids(cid, children_map, cur_budgeted_ids)
+            cur_effective[cid] = eff
+            all_effective_ids |= eff
+        if cid in pri_budgeted_ids:
+            eff = _collect_effective_ids(cid, children_map, pri_budgeted_ids)
+            pri_effective[cid] = eff
+            all_effective_ids |= eff
+
+    async def per_cat_spending(cat_ids: set[int], start: date, end: date) -> dict[int, int]:
+        if not cat_ids:
+            return {}
         result = await session.execute(
             select(
                 LineItem.category_id,
@@ -380,8 +442,8 @@ async def get_month_comparison(
         )
         return {row.category_id: row.spent for row in result}
 
-    cur_spent = await spending_map(all_cat_ids, current_start, current_end)
-    pri_spent = await spending_map(all_cat_ids, prior_start, prior_end)
+    cur_per_cat = await per_cat_spending(all_effective_ids, current_start, current_end)
+    pri_per_cat = await per_cat_spending(all_effective_ids, prior_start, prior_end)
 
     items = []
     for cid in sorted(all_cat_ids):
@@ -390,8 +452,10 @@ async def get_month_comparison(
             continue
         is_income = cat.is_income
 
-        raw_cur = cur_spent.get(cid, 0)
-        raw_pri = pri_spent.get(cid, 0)
+        cur_eff = cur_effective.get(cid, {cid})
+        pri_eff = pri_effective.get(cid, {cid})
+        raw_cur = sum(cur_per_cat.get(c, 0) for c in cur_eff)
+        raw_pri = sum(pri_per_cat.get(c, 0) for c in pri_eff)
         cur_s = raw_cur if is_income else -raw_cur
         pri_s = raw_pri if is_income else -raw_pri
 
