@@ -5,6 +5,7 @@ export interface Category {
   color: string | null;
   icon: string | null;
   is_income: boolean;
+  source: string;
   created_at: string;
   updated_at: string;
 }

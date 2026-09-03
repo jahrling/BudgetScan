@@ -44,7 +44,7 @@ async def create_category(session: AsyncSession, data: CategoryCreate) -> Catego
     if data.parent_id is not None:
         await _check_parent_exists(session, data.parent_id)
 
-    cat = Category(**data.model_dump())
+    cat = Category(**data.model_dump(), source="app")
     session.add(cat)
     await session.commit()
     await session.refresh(cat)

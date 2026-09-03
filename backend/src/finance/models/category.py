@@ -19,6 +19,7 @@ class Category(Base):
     color: Mapped[Optional[str]] = mapped_column(String(7), nullable=True)
     icon: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     is_income: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0", nullable=False)
+    source: Mapped[str] = mapped_column(String(16), default="quicken", server_default="quicken", nullable=False)
 
     parent: Mapped[Optional["SelfRef"]] = relationship(
         "Category", remote_side="Category.id", back_populates="children", lazy="selectin"
