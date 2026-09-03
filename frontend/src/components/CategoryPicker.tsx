@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import type { Category } from "../types/models";
 import { cn } from "../lib/utils";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Search, X } from "lucide-react";
 
 interface CategoryPickerProps {
   value: number | null;
@@ -17,7 +17,6 @@ interface CategoryPickerProps {
 interface FlatOption {
   id: number;
   name: string;
-  label: string;
   depth: number;
   parentName: string | null;
 }
@@ -45,7 +44,6 @@ function buildOptions(
       result.push({
         id: c.id,
         name: c.name,
-        label: "  ".repeat(depth) + c.name,
         depth,
         parentName: parent?.name ?? null,
       });
@@ -77,25 +75,15 @@ export function CategoryPicker({
 
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const ref = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const selectedOption = options.find((o) => o.id === value) ?? null;
 
   useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-        setSearch("");
-      }
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, []);
-
-  useEffect(() => {
     if (open) {
-      inputRef.current?.focus();
+      setTimeout(() => inputRef.current?.focus(), 50);
+    } else {
+      setSearch("");
     }
   }, [open]);
 
@@ -112,14 +100,13 @@ export function CategoryPicker({
   function select(id: number | null) {
     onValueChange(id);
     setOpen(false);
-    setSearch("");
   }
 
   return (
-    <div ref={ref} className="relative">
+    <>
       <button
         type="button"
-        onClick={() => setOpen(!open)}
+        onClick={() => setOpen(true)}
         className={cn(
           "flex h-10 w-full items-center justify-between rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500",
           !selectedOption && "text-gray-400",
@@ -127,66 +114,93 @@ export function CategoryPicker({
         )}
       >
         <span className="truncate">
-          {selectedOption ? selectedOption.name : "Select category…"}
+          {selectedOption ? (
+            <>
+              {selectedOption.name}
+              {selectedOption.parentName && (
+                <span className="text-gray-400 text-xs ml-1">
+                  in {selectedOption.parentName}
+                </span>
+              )}
+            </>
+          ) : (
+            "Select category…"
+          )}
         </span>
         <ChevronDown className="h-4 w-4 shrink-0 text-gray-400" />
       </button>
 
       {open && (
-        <div className="absolute z-20 mt-1 w-full rounded-md border border-gray-200 bg-white shadow-lg">
-          <div className="p-1.5">
-            <input
-              ref={inputRef}
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search categories…"
-              className="w-full rounded border border-gray-200 bg-gray-50 px-2 py-1.5 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-sky-500"
-            />
-          </div>
-          <div className="max-h-48 overflow-y-auto">
-            {allowNone && (
-              <button
-                type="button"
-                className={cn(
-                  "w-full px-3 py-1.5 text-left text-sm hover:bg-sky-50 active:bg-sky-100",
-                  value === null && "bg-sky-50 font-medium",
-                )}
-                onClick={() => select(null)}
-              >
-                {noneLabel}
-              </button>
-            )}
-            {filtered.map((o) => (
-              <button
-                key={o.id}
-                type="button"
-                className={cn(
-                  "w-full px-3 py-1.5 text-left text-sm hover:bg-sky-50 active:bg-sky-100",
-                  o.id === value && "bg-sky-50 font-medium",
-                )}
-                onClick={() => select(o.id)}
-              >
-                {search.trim() ? (
-                  <span>
-                    {o.name}
-                    {o.parentName && (
-                      <span className="ml-1 text-gray-400">
-                        in {o.parentName}
-                      </span>
-                    )}
-                  </span>
-                ) : (
-                  o.label
-                )}
-              </button>
-            ))}
-            {filtered.length === 0 && (
-              <p className="px-3 py-2 text-sm text-gray-400">No matches</p>
-            )}
+        <div className="fixed inset-0 z-50 flex items-start justify-center pt-[8vh]">
+          <div
+            className="fixed inset-0 bg-black/50"
+            onClick={() => setOpen(false)}
+          />
+          <div className="relative z-10 rounded-lg bg-white shadow-xl max-w-lg w-[calc(100%-2rem)] max-h-[75vh] flex flex-col">
+            <div className="flex items-center gap-2 p-3 border-b border-gray-200">
+              <Search className="h-4 w-4 text-gray-400 shrink-0" />
+              <input
+                ref={inputRef}
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search categories…"
+                className="flex-1 text-sm bg-transparent placeholder:text-gray-400 focus:outline-none"
+              />
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => setSearch("")}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+
+            <div className="overflow-y-auto flex-1 py-1">
+              {allowNone && !search.trim() && (
+                <button
+                  type="button"
+                  className={cn(
+                    "w-full px-4 py-2.5 text-left text-sm hover:bg-sky-50 active:bg-sky-100",
+                    value === null && "bg-sky-50 font-medium text-sky-700",
+                  )}
+                  onClick={() => select(null)}
+                >
+                  {noneLabel}
+                </button>
+              )}
+              {filtered.map((o) => (
+                <button
+                  key={o.id}
+                  type="button"
+                  className={cn(
+                    "w-full py-2.5 pr-4 text-left text-sm hover:bg-sky-50 active:bg-sky-100",
+                    o.id === value && "bg-sky-50 font-medium text-sky-700",
+                  )}
+                  style={{
+                    paddingLeft: `${1 + (search.trim() ? 0 : o.depth) * 1.25}rem`,
+                  }}
+                  onClick={() => select(o.id)}
+                >
+                  <span>{o.name}</span>
+                  {o.parentName && (
+                    <span className="ml-1.5 text-xs text-gray-400">
+                      in {o.parentName}
+                    </span>
+                  )}
+                </button>
+              ))}
+              {filtered.length === 0 && (
+                <p className="px-4 py-3 text-sm text-gray-400">
+                  No categories match &ldquo;{search}&rdquo;
+                </p>
+              )}
+            </div>
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }

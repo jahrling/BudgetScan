@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   ArrowDown,
@@ -123,6 +123,7 @@ export default function Transactions() {
   const [catSkipped, setCatSkipped] = useState(0);
 
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  const lastKnownIdxRef = useRef(0);
 
   const [searchParams, setSearchParams] = useSearchParams();
   useEffect(() => {
@@ -231,12 +232,24 @@ export default function Transactions() {
 
   if (selectedId !== null) {
     const selectedIdx = items.findIndex((t) => t.id === selectedId);
-    const prevId =
-      selectedIdx > 0 ? items[selectedIdx - 1].id : null;
-    const nextId =
-      selectedIdx >= 0 && selectedIdx < items.length - 1
-        ? items[selectedIdx + 1].id
-        : null;
+
+    let prevId: number | null;
+    let nextId: number | null;
+
+    if (selectedIdx >= 0) {
+      lastKnownIdxRef.current = selectedIdx;
+      prevId = selectedIdx > 0 ? items[selectedIdx - 1].id : null;
+      nextId =
+        selectedIdx < items.length - 1 ? items[selectedIdx + 1].id : null;
+    } else if (items.length > 0) {
+      const idx = Math.min(lastKnownIdxRef.current, items.length - 1);
+      prevId = idx > 0 ? items[idx - 1].id : null;
+      nextId = items[idx].id;
+    } else {
+      prevId = null;
+      nextId = null;
+    }
+
     return (
       <TransactionDetailView
         key={selectedId}
