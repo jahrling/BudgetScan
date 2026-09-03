@@ -1143,6 +1143,14 @@ function TransactionDetailView({
 
   async function handleConfirm() {
     if (!txn) return;
+    if (dirty && splits) {
+      await replaceMut.mutateAsync({
+        txnId: txn.id,
+        line_items: splits,
+      });
+      setSplits(null);
+      setDirty(false);
+    }
     await updateMut.mutateAsync({ id: txn.id, status: "confirmed" });
   }
 
@@ -1290,11 +1298,11 @@ function TransactionDetailView({
         ) : (
           <Button
             onClick={handleConfirm}
-            disabled={updateMut.isPending}
+            disabled={updateMut.isPending || replaceMut.isPending || (dirty && (!balanced || !validCategories))}
             variant="outline"
           >
             <Check className="h-4 w-4 mr-1" />
-            {updateMut.isPending ? "…" : "Confirm"}
+            {updateMut.isPending || replaceMut.isPending ? "…" : "Confirm"}
           </Button>
         )}
       </div>
