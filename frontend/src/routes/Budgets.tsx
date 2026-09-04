@@ -452,9 +452,8 @@ function MonthSummaryBanner({
       {/* Desktop: horizontal stat row */}
       <div className="hidden md:flex md:items-end md:justify-between md:gap-4 mb-2">
         <StatCell label="Income" value={formatCents(incomeTotal)} color="text-emerald-700 dark:text-emerald-400" />
-        <StatCell label="Budgeted" value={formatCents(totalBudgeted)} color="text-gray-500 dark:text-gray-400" />
-        <StatCell label="Actual spend" value={formatCents(totalSpent)} color="text-gray-900 dark:text-gray-100" />
-        <StatCell label="Unbudgeted" value={formatCents(unbudgetedTotal)} color="text-amber-700 dark:text-amber-400" />
+        <StatCell label="Budget / Actual" value={`${formatCents(totalBudgeted)} / ${formatCents(totalSpent)}`} color="text-gray-900 dark:text-gray-100" />
+        <StatCell label="Unbudgeted spend" value={formatCents(unbudgetedTotal)} color="text-amber-700 dark:text-amber-400" />
         <StatCell
           label="Net"
           value={`${net >= 0 ? "+" : ""}${formatCents(net)}`}
@@ -468,15 +467,11 @@ function MonthSummaryBanner({
           <span className="font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">{formatCents(incomeTotal)}</span>
         </div>
         <div className="flex justify-between text-sm">
-          <span className="text-gray-600 dark:text-gray-400">Budgeted</span>
-          <span className="font-semibold tabular-nums text-gray-500 dark:text-gray-400">{formatCents(totalBudgeted)}</span>
+          <span className="text-gray-600 dark:text-gray-400">Budget / Actual</span>
+          <span className="font-semibold tabular-nums text-gray-900 dark:text-gray-100">{formatCents(totalBudgeted)} / {formatCents(totalSpent)}</span>
         </div>
         <div className="flex justify-between text-sm">
-          <span className="text-gray-600 dark:text-gray-400">Actual spend</span>
-          <span className="font-semibold tabular-nums text-gray-900 dark:text-gray-100">{formatCents(totalSpent)}</span>
-        </div>
-        <div className="flex justify-between text-sm">
-          <span className="text-gray-600 dark:text-gray-400">Unbudgeted</span>
+          <span className="text-gray-600 dark:text-gray-400">Unbudgeted spend</span>
           <span className="font-semibold tabular-nums text-amber-700 dark:text-amber-400">{formatCents(unbudgetedTotal)}</span>
         </div>
         <div className="flex justify-between text-sm border-t border-gray-200 dark:border-gray-700 pt-1">
