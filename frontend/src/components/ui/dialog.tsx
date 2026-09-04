@@ -21,14 +21,14 @@ export function Dialog({ open, onClose, children, className }: DialogProps) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[10vh]">
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh] sm:pt-[10vh] px-4">
       <div
         className="fixed inset-0 bg-black/50"
         onClick={onClose}
       />
       <div
         className={cn(
-          "relative z-10 rounded-lg bg-white dark:bg-gray-800 p-6 shadow-xl max-w-lg w-[calc(100%-2rem)]",
+          "relative z-10 rounded-lg bg-white dark:bg-gray-800 p-6 shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto",
           className,
         )}
       >

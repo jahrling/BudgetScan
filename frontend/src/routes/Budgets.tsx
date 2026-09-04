@@ -84,10 +84,14 @@ export default function Budgets() {
   }, [comparison]);
 
   const totalBudgeted = budgets.reduce((sum, b) => {
+    if (incomeCatIds.has(b.category_id)) return sum;
     const edited = sliderEdits[b.id];
     return sum + (edited !== undefined ? edited : b.amount_cents);
   }, 0);
-  const totalSpent = status.reduce((sum, s) => sum + s.spent_cents, 0);
+  const totalSpent = status.reduce((sum, s) => {
+    if (incomeCatIds.has(s.category_id)) return sum;
+    return sum + s.spent_cents;
+  }, 0);
   const unbudgetedTotal = unbudgetedData?.total_cents ?? 0;
   const incomeTotal = incomeSummary?.total_cents ?? 0;
 
@@ -169,18 +173,20 @@ export default function Budgets() {
     <Layout wide>
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-        <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Budgets</h1>
+        <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 shrink-0">Budgets</h1>
         <div className="flex items-center gap-2">
           <MonthSelector month={month} onChange={setMonth} />
           <SegmentedControl value={view} onChange={setView} options={viewOptions} />
-          {view === "plan" && (
-            <Button size="sm" onClick={openCreate}>
-              <Plus className="h-4 w-4 mr-1" />
-              Add
-            </Button>
-          )}
         </div>
       </div>
+      {view === "plan" && (
+        <div className="flex justify-end mb-3">
+          <Button size="sm" onClick={openCreate}>
+            <Plus className="h-4 w-4 mr-1" />
+            Add
+          </Button>
+        </div>
+      )}
 
       {/* Auto-seed banner */}
       {!isLoading && budgets.length === 0 && (
