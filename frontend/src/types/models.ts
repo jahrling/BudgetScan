@@ -135,6 +135,7 @@ export interface Transaction {
   category_source: string | null;
   category_confidence: number | null;
   needs_review: boolean;
+  excluded: boolean | null;
   merchant_name: string | null;
   account_name: string | null;
   category_name: string | null;

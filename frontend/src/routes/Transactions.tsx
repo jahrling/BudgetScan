@@ -8,6 +8,8 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  EyeOff,
+  Eye,
   Plus,
   Search,
   Sparkles,
@@ -97,6 +99,7 @@ export default function Transactions() {
   const [filterAccount, setFilterAccount] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [filterCategory, setFilterCategory] = useState("");
+  const [filterExcluded, setFilterExcluded] = useState("");
   const [page, setPage] = useState(0);
   const [sorts, setSorts] = useState<SortSpec[]>([{ field: "posted_at", dir: "desc" }]);
   const pageSize = 50;
@@ -153,6 +156,7 @@ export default function Transactions() {
     if (filterAccount) f.account_id = filterAccount;
     if (filterStatus) f.status = filterStatus;
     if (filterCategory) f.category_id = filterCategory;
+    if (filterExcluded) f.excluded = filterExcluded;
     setFilters(f);
     setPage(0);
     setSearchOpen(false);
@@ -165,6 +169,7 @@ export default function Transactions() {
     setFilterAccount("");
     setFilterStatus("");
     setFilterCategory("");
+    setFilterExcluded("");
     setFilters({ date_from: new Date(from).toISOString() });
     setPage(0);
   }
@@ -178,6 +183,7 @@ export default function Transactions() {
     if (key === "account_id") setFilterAccount("");
     if (key === "status") setFilterStatus("");
     if (key === "category_id") setFilterCategory("");
+    if (key === "excluded") setFilterExcluded("");
     setPage(0);
   }
 
@@ -272,6 +278,7 @@ export default function Transactions() {
       return c ? c.name : `Category #${value}`;
     }
     if (key === "status") return value;
+    if (key === "excluded") return value === "only" ? "Excluded only" : "Including excluded";
     if (key === "date_from") return `From ${new Date(value).toLocaleDateString()}`;
     if (key === "date_to") return `To ${new Date(value).toLocaleDateString()}`;
     return `${key}: ${value}`;
@@ -404,7 +411,12 @@ export default function Transactions() {
                   <tr
                     key={t.id}
                     onClick={() => setSelectedId(t.id)}
-                    className="hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer bg-white dark:bg-gray-900"
+                    className={cn(
+                      "hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer",
+                      t.excluded
+                        ? "bg-gray-50 dark:bg-gray-900/60 opacity-50"
+                        : "bg-white dark:bg-gray-900",
+                    )}
                   >
                     <td className="px-3 py-2 text-xs text-gray-600 dark:text-gray-400 whitespace-nowrap">
                       {new Date(t.posted_at).toLocaleDateString()}
@@ -474,6 +486,14 @@ export default function Transactions() {
                             title={`Matched transfer pair #${t.transfer_pair_id} (detected via Detect Transfers)`}
                           >
                             xfer
+                          </span>
+                        )}
+                        {t.excluded && (
+                          <span
+                            className="inline-block rounded px-1.5 py-0.5 text-[10px] font-medium bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300"
+                            title="Excluded from budget calculations"
+                          >
+                            excluded
                           </span>
                         )}
                       </div>
@@ -616,6 +636,17 @@ export default function Transactions() {
               <option value="confirmed">Confirmed</option>
               <option value="split">Split</option>
               <option value="final">Final</option>
+            </Select>
+          </div>
+          <div>
+            <Label>Excluded</Label>
+            <Select
+              value={filterExcluded}
+              onChange={(e) => setFilterExcluded(e.target.value)}
+            >
+              <option value="">Hide excluded</option>
+              <option value="include">Include excluded</option>
+              <option value="only">Excluded only</option>
             </Select>
           </div>
           <div>
@@ -1245,7 +1276,27 @@ function TransactionDetailView({
         </div>
       </div>
 
-      <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 mb-4">
+      {txn.excluded && (
+        <div className="rounded-lg border border-orange-200 dark:border-orange-800 bg-orange-50 dark:bg-orange-900/30 p-2.5 mb-3 flex items-center justify-between">
+          <p className="text-sm text-orange-800 dark:text-orange-300">
+            This transaction is excluded from budget calculations.
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => updateMut.mutateAsync({ id: txn.id, excluded: null })}
+            disabled={updateMut.isPending}
+          >
+            <Eye className="h-3.5 w-3.5 mr-1" />
+            Include
+          </Button>
+        </div>
+      )}
+
+      <div className={cn(
+        "bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 mb-4",
+        txn.excluded && "opacity-50",
+      )}>
         <div className="flex justify-between items-start">
           <div>
             <h2 className="font-semibold text-gray-900 dark:text-gray-100">
@@ -1316,6 +1367,16 @@ function TransactionDetailView({
           >
             <Check className="h-4 w-4 mr-1" />
             {updateMut.isPending || replaceMut.isPending ? "…" : "Confirm"}
+          </Button>
+        )}
+        {!txn.excluded && (
+          <Button
+            variant="outline"
+            onClick={() => updateMut.mutateAsync({ id: txn.id, excluded: true })}
+            disabled={updateMut.isPending}
+            title="Exclude from budget calculations"
+          >
+            <EyeOff className="h-4 w-4" />
           </Button>
         )}
       </div>
