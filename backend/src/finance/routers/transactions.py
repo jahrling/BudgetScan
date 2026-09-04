@@ -145,14 +145,27 @@ async def update_transaction(
     session: AsyncSession = Depends(get_session),
 ):
     txn = await txn_service.update_transaction(session, txn_id, data)
-    return TransactionRead.model_validate(
-        txn,
-        from_attributes=True,
-        update={
-            "merchant_name": txn.merchant.name if txn.merchant else None,
-            "account_name": txn.account.name if txn.account else None,
-            "category_name": txn.category.name if txn.category else None,
-        },
+    return TransactionRead(
+        id=txn.id,
+        account_id=txn.account_id,
+        merchant_id=txn.merchant_id,
+        posted_at=txn.posted_at,
+        amount_cents=txn.amount_cents,
+        description=txn.description,
+        quicken_id=txn.quicken_id,
+        receipt_id=txn.receipt_id,
+        status=txn.status,
+        transfer_pair_id=txn.transfer_pair_id,
+        category_id=txn.category_id,
+        category_source=txn.category_source,
+        category_confidence=txn.category_confidence,
+        needs_review=txn.needs_review,
+        excluded=txn.excluded,
+        created_at=txn.created_at,
+        updated_at=txn.updated_at,
+        merchant_name=txn.merchant.name if txn.merchant else None,
+        account_name=txn.account.name if txn.account else None,
+        category_name=txn.category.name if txn.category else None,
     )
 
 
