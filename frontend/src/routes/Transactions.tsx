@@ -29,6 +29,7 @@ import { MerchantCombobox } from "../components/MerchantCombobox";
 import { SplitEditor } from "../components/SplitEditor";
 import { useAccounts, useCreateAccount } from "../hooks/useAccounts";
 import { useCategories } from "../hooks/useCategories";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   useTransactions,
   useTransaction,
@@ -107,6 +108,7 @@ export default function Transactions() {
   const sortParam = sorts.map((s) => `${s.field}:${s.dir}`).join(",");
   const queryParams: Record<string, string> = {
     ...filters,
+    excluded: filters.excluded ?? "include",
     offset: String(page * pageSize),
     limit: String(pageSize),
     sort: sortParam,
@@ -278,7 +280,7 @@ export default function Transactions() {
       return c ? c.name : `Category #${value}`;
     }
     if (key === "status") return value;
-    if (key === "excluded") return value === "only" ? "Excluded only" : "Including excluded";
+    if (key === "excluded") return value === "only" ? "Excluded only" : value === "hide" ? "Hiding excluded" : "Including excluded";
     if (key === "date_from") return `From ${new Date(value).toLocaleDateString()}`;
     if (key === "date_to") return `To ${new Date(value).toLocaleDateString()}`;
     return `${key}: ${value}`;
@@ -461,7 +463,12 @@ export default function Transactions() {
                         <span className="text-gray-400">—</span>
                       )}
                     </td>
-                    <td className="px-3 py-2 text-right font-semibold tabular-nums whitespace-nowrap">
+                    <td className={cn(
+                      "px-3 py-2 text-right font-semibold tabular-nums whitespace-nowrap",
+                      t.amount_cents > 0
+                        ? "text-emerald-600 dark:text-emerald-400"
+                        : "text-gray-900 dark:text-gray-100",
+                    )}>
                       {formatCents(t.amount_cents)}
                     </td>
                     <td className="px-3 py-2">
@@ -644,8 +651,8 @@ export default function Transactions() {
               value={filterExcluded}
               onChange={(e) => setFilterExcluded(e.target.value)}
             >
-              <option value="">Hide excluded</option>
-              <option value="include">Include excluded</option>
+              <option value="">All</option>
+              <option value="hide">Hide excluded</option>
               <option value="only">Excluded only</option>
             </Select>
           </div>
@@ -1151,12 +1158,18 @@ function TransactionDetailView({
   onPrev?: () => void;
   onNext?: () => void;
 }) {
+  const qc = useQueryClient();
   const { data: txn, isLoading } = useTransaction(txnId);
   const replaceMut = useReplaceLineItems();
   const updateMut = useUpdateTransaction();
 
   const [splits, setSplits] = useState<LineItemInput[] | null>(null);
   const [dirty, setDirty] = useState(false);
+
+  async function handleToggleExcluded(exclude: boolean) {
+    await updateMut.mutateAsync({ id: txnId, excluded: exclude ? true : null });
+    await qc.invalidateQueries({ queryKey: ["transactions", txnId] });
+  }
 
   const currentSplits =
     splits ??
@@ -1284,7 +1297,7 @@ function TransactionDetailView({
           <Button
             variant="outline"
             size="sm"
-            onClick={() => updateMut.mutateAsync({ id: txn.id, excluded: null })}
+            onClick={() => handleToggleExcluded(false)}
             disabled={updateMut.isPending}
           >
             <Eye className="h-3.5 w-3.5 mr-1" />
@@ -1372,7 +1385,7 @@ function TransactionDetailView({
         {!txn.excluded && (
           <Button
             variant="outline"
-            onClick={() => updateMut.mutateAsync({ id: txn.id, excluded: true })}
+            onClick={() => handleToggleExcluded(true)}
             disabled={updateMut.isPending}
             title="Exclude from budget calculations"
           >
