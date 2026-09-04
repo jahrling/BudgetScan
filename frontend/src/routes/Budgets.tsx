@@ -1132,7 +1132,12 @@ function BudgetTransactionPanel({
                     )}
                   </p>
                 </div>
-                <span className="text-sm font-semibold tabular-nums whitespace-nowrap ml-3">
+                <span className={cn(
+                  "text-sm font-semibold tabular-nums whitespace-nowrap ml-3",
+                  t.amount_cents > 0
+                    ? "text-emerald-600 dark:text-emerald-400"
+                    : "text-gray-900 dark:text-gray-100",
+                )}>
                   {formatCents(t.amount_cents)}
                 </span>
               </div>
