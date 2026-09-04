@@ -140,6 +140,7 @@ async def get_budget_status(
             LineItem.category_id.in_(all_effective_ids),
             Transaction.posted_at >= period_start,
             Transaction.posted_at <= period_end,
+            Transaction.excluded.is_(None),
         )
         .group_by(LineItem.category_id)
     )
@@ -205,6 +206,7 @@ async def get_spending_suggestions(
         .where(
             Transaction.posted_at >= start,
             Transaction.posted_at <= end,
+            Transaction.excluded.is_(None),
         )
         .group_by(LineItem.category_id)
     )
@@ -259,6 +261,7 @@ async def get_income_summary(
             LineItem.category_id.in_(income_ids),
             Transaction.posted_at >= period_start,
             Transaction.posted_at <= period_end,
+            Transaction.excluded.is_(None),
         )
         .group_by(LineItem.category_id)
     )
@@ -315,6 +318,7 @@ async def get_unbudgeted_spend(
                 LineItem.category_id.not_in(excluded_ids),
                 Transaction.posted_at >= period_start,
                 Transaction.posted_at <= period_end,
+                Transaction.excluded.is_(None),
             )
             .group_by(LineItem.category_id)
         )
@@ -329,6 +333,7 @@ async def get_unbudgeted_spend(
             .where(
                 Transaction.posted_at >= period_start,
                 Transaction.posted_at <= period_end,
+                Transaction.excluded.is_(None),
             )
             .group_by(LineItem.category_id)
         )
@@ -360,6 +365,7 @@ async def get_unbudgeted_spend(
         .where(
             Transaction.posted_at >= period_start,
             Transaction.posted_at <= period_end,
+            Transaction.excluded.is_(None),
             ~sa_exists(
                 select(LineItem.id).where(LineItem.transaction_id == Transaction.id)
             ),
@@ -437,6 +443,7 @@ async def get_month_comparison(
                 LineItem.category_id.in_(cat_ids),
                 Transaction.posted_at >= start,
                 Transaction.posted_at <= end,
+                Transaction.excluded.is_(None),
             )
             .group_by(LineItem.category_id)
         )

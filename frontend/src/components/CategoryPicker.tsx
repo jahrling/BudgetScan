@@ -110,8 +110,8 @@ export function CategoryPicker({
         type="button"
         onClick={() => setOpen(true)}
         className={cn(
-          "flex h-10 w-full items-center justify-between rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500",
-          !selectedOption && "text-gray-400",
+          "flex h-10 w-full items-center justify-between rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500",
+          !selectedOption && "text-gray-400 dark:text-gray-500",
           className,
         )}
       >
@@ -120,7 +120,7 @@ export function CategoryPicker({
             <>
               {selectedOption.name}
               {selectedOption.parentName && (
-                <span className="text-gray-400 text-xs ml-1">
+                <span className="text-gray-400 dark:text-gray-500 text-xs ml-1">
                   in {selectedOption.parentName}
                 </span>
               )}
@@ -138,22 +138,22 @@ export function CategoryPicker({
             className="fixed inset-0 bg-black/50"
             onClick={() => setOpen(false)}
           />
-          <div className="relative z-10 rounded-lg bg-white shadow-xl max-w-lg w-[calc(100%-2rem)] max-h-[75vh] flex flex-col">
-            <div className="flex items-center gap-2 p-3 border-b border-gray-200">
-              <Search className="h-4 w-4 text-gray-400 shrink-0" />
+          <div className="relative z-10 rounded-lg bg-white dark:bg-gray-800 shadow-xl max-w-lg w-[calc(100%-2rem)] max-h-[75vh] flex flex-col">
+            <div className="flex items-center gap-2 p-3 border-b border-gray-200 dark:border-gray-700">
+              <Search className="h-4 w-4 text-gray-400 dark:text-gray-500 shrink-0" />
               <input
                 ref={inputRef}
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search categories…"
-                className="flex-1 text-sm bg-transparent placeholder:text-gray-400 focus:outline-none"
+                className="flex-1 text-sm bg-transparent text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none"
               />
               {search && (
                 <button
                   type="button"
                   onClick={() => setSearch("")}
-                  className="text-gray-400 hover:text-gray-600"
+                  className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
                 >
                   <X className="h-4 w-4" />
                 </button>
@@ -165,8 +165,8 @@ export function CategoryPicker({
                 <button
                   type="button"
                   className={cn(
-                    "w-full px-4 py-2.5 text-left text-sm hover:bg-sky-50 active:bg-sky-100",
-                    value === null && "bg-sky-50 font-medium text-sky-700",
+                    "w-full px-4 py-2.5 text-left text-sm text-gray-900 dark:text-gray-100 hover:bg-sky-50 dark:hover:bg-sky-900/30 active:bg-sky-100 dark:active:bg-sky-900/50",
+                    value === null && "bg-sky-50 dark:bg-sky-900/30 font-medium text-sky-700 dark:text-sky-300",
                   )}
                   onClick={() => select(null)}
                 >
@@ -178,8 +178,8 @@ export function CategoryPicker({
                   key={o.id}
                   type="button"
                   className={cn(
-                    "w-full py-2.5 pr-4 text-left text-sm hover:bg-sky-50 active:bg-sky-100",
-                    o.id === value && "bg-sky-50 font-medium text-sky-700",
+                    "w-full py-2.5 pr-4 text-left text-sm text-gray-900 dark:text-gray-100 hover:bg-sky-50 dark:hover:bg-sky-900/30 active:bg-sky-100 dark:active:bg-sky-900/50",
+                    o.id === value && "bg-sky-50 dark:bg-sky-900/30 font-medium text-sky-700 dark:text-sky-300",
                   )}
                   style={{
                     paddingLeft: `${1 + (search.trim() ? 0 : o.depth) * 1.25}rem`,
@@ -188,19 +188,19 @@ export function CategoryPicker({
                 >
                   <span>{o.name}</span>
                   {o.source === "app" && (
-                    <span className="ml-1 inline-flex items-center rounded bg-sky-100 px-1 py-0.5 text-[10px] font-medium text-sky-700 align-middle">
+                    <span className="ml-1 inline-flex items-center rounded bg-sky-100 dark:bg-sky-900/40 px-1 py-0.5 text-[10px] font-medium text-sky-700 dark:text-sky-300 align-middle">
                       custom
                     </span>
                   )}
                   {o.parentName && (
-                    <span className="ml-1.5 text-xs text-gray-400">
+                    <span className="ml-1.5 text-xs text-gray-400 dark:text-gray-500">
                       in {o.parentName}
                     </span>
                   )}
                 </button>
               ))}
               {filtered.length === 0 && (
-                <p className="px-4 py-3 text-sm text-gray-400">
+                <p className="px-4 py-3 text-sm text-gray-400 dark:text-gray-500">
                   No categories match &ldquo;{search}&rdquo;
                 </p>
               )}

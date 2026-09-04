@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import './index.css'
+import { ThemeProvider } from './hooks/useTheme'
 import { useAuth } from './hooks/useAuth'
 import NavBar from './components/NavBar'
 import { InstallPrompt } from './components/InstallPrompt'
@@ -31,7 +32,7 @@ const queryClient = new QueryClient({
 function FullscreenSpinner() {
   return (
     <div className="flex min-h-screen items-center justify-center">
-      <p className="text-gray-500">Loading…</p>
+      <p className="text-gray-500 dark:text-gray-400">Loading…</p>
     </div>
   )
 }
@@ -142,7 +143,9 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <App />
+        <ThemeProvider>
+          <App />
+        </ThemeProvider>
       </BrowserRouter>
     </QueryClientProvider>
   </StrictMode>,

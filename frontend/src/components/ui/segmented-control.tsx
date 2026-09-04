@@ -16,7 +16,7 @@ export function SegmentedControl<T extends string>({
   return (
     <div
       role="tablist"
-      className={cn("inline-flex rounded-lg bg-gray-100 p-0.5", className)}
+      className={cn("inline-flex rounded-lg bg-gray-100 dark:bg-gray-700 p-0.5", className)}
     >
       {options.map((opt) => (
         <button
@@ -28,8 +28,8 @@ export function SegmentedControl<T extends string>({
           className={cn(
             "px-3 py-1.5 text-sm rounded-md transition-colors",
             value === opt.value
-              ? "bg-white shadow-sm text-sky-600 font-medium"
-              : "text-gray-600 hover:text-gray-900",
+              ? "bg-white dark:bg-gray-600 shadow-sm text-sky-600 dark:text-sky-400 font-medium"
+              : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200",
           )}
         >
           {opt.label}

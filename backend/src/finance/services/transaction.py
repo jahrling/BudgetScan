@@ -34,6 +34,7 @@ async def list_transactions(
     account_id: int | None = None,
     status: str | None = None,
     category_id: int | None = None,
+    excluded: str | None = None,
     sort_specs: list[tuple[str, str]] | None = None,
 ) -> tuple[list[Transaction], int]:
     q = select(Transaction)
@@ -66,6 +67,12 @@ async def list_transactions(
             LineItem.category_id == category_id
         ).distinct()
         q = q.where(Transaction.id.in_(sub))
+    if excluded == "only":
+        q = q.where(Transaction.excluded.is_(True))
+    elif excluded == "include":
+        pass
+    else:
+        q = q.where(Transaction.excluded.is_(None))
 
     count_q = select(func.count()).select_from(q.subquery())
     total = (await session.execute(count_q)).scalar() or 0
@@ -125,6 +132,7 @@ async def get_transaction_with_items(session: AsyncSession, txn_id: int) -> dict
         "quicken_id": txn.quicken_id,
         "receipt_id": txn.receipt_id,
         "status": txn.status,
+        "excluded": txn.excluded,
         "created_at": txn.created_at,
         "updated_at": txn.updated_at,
         "merchant_name": txn.merchant.name if txn.merchant else None,

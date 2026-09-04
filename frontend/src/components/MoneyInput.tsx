@@ -29,7 +29,7 @@ export const MoneyInput = forwardRef<HTMLInputElement, MoneyInputProps>(
 
     return (
       <div className="relative">
-        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">
+        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 text-sm">
           $
         </span>
         <input
@@ -40,7 +40,7 @@ export const MoneyInput = forwardRef<HTMLInputElement, MoneyInputProps>(
           onKeyDown={handleKeyDown}
           onChange={() => {}}
           className={cn(
-            "flex h-10 w-full rounded-md border border-gray-300 bg-white pl-7 pr-3 py-2 text-sm text-right placeholder:text-gray-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 disabled:cursor-not-allowed disabled:opacity-50",
+            "flex h-10 w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 pl-7 pr-3 py-2 text-sm text-right text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 disabled:cursor-not-allowed disabled:opacity-50",
             className,
           )}
           {...props}

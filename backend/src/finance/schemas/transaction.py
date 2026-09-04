@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from finance.schemas.line_item import LineItemCreate, LineItemRead
 
@@ -32,6 +32,7 @@ class TransactionRead(BaseModel):
     category_source: str | None = None
     category_confidence: float | None = None
     needs_review: bool = True
+    excluded: bool | None = None
     created_at: datetime
     updated_at: datetime
     merchant_name: str | None = None
@@ -54,6 +55,14 @@ class TransactionUpdate(BaseModel):
     quicken_id: str | None = None
     receipt_id: int | None = None
     status: str | None = None
+    excluded: bool | None = None
+
+    @field_validator("excluded", mode="before")
+    @classmethod
+    def coerce_false_to_none(cls, v: object) -> bool | None:
+        if v is False:
+            return None
+        return v  # type: ignore[return-value]
 
 
 class TransactionListParams(BaseModel):
@@ -64,3 +73,4 @@ class TransactionListParams(BaseModel):
     account_id: int | None = None
     status: str | None = None
     category_id: int | None = None
+    excluded: str | None = None

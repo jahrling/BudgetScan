@@ -43,6 +43,7 @@ async def list_transactions(
     account_id: int | None = None,
     status: str | None = None,
     category_id: int | None = None,
+    excluded: str | None = Query(None, description="'only' = excluded only, 'include' = all, omit/null = hide excluded"),
     sort_by: str | None = None,
     sort_dir: str = "desc",
     sort: str | None = Query(None, description="Multi-sort: 'col1:asc,col2:desc'"),
@@ -69,6 +70,7 @@ async def list_transactions(
         account_id=account_id,
         status=status,
         category_id=category_id,
+        excluded=excluded,
         sort_specs=sort_specs,
     )
 
@@ -110,6 +112,7 @@ async def list_transactions(
                 category_source=t.category_source,
                 category_confidence=t.category_confidence,
                 needs_review=t.needs_review,
+                excluded=t.excluded,
                 created_at=t.created_at,
                 updated_at=t.updated_at,
                 merchant_name=t.merchant.name if t.merchant else None,
@@ -152,9 +155,17 @@ async def update_transaction(
         quicken_id=txn.quicken_id,
         receipt_id=txn.receipt_id,
         status=txn.status,
+        transfer_pair_id=txn.transfer_pair_id,
+        category_id=txn.category_id,
+        category_source=txn.category_source,
+        category_confidence=txn.category_confidence,
+        needs_review=txn.needs_review,
+        excluded=txn.excluded,
         created_at=txn.created_at,
         updated_at=txn.updated_at,
         merchant_name=txn.merchant.name if txn.merchant else None,
+        account_name=txn.account.name if txn.account else None,
+        category_name=txn.category.name if txn.category else None,
     )
 
 

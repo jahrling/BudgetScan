@@ -53,9 +53,11 @@ export function useUpdateTransaction() {
       id: number;
       description?: string | null;
       status?: string;
+      excluded?: boolean | null;
     }) => api.patch<TransactionDetail>(`/transactions/${id}`, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["transactions"] });
+      qc.invalidateQueries({ queryKey: ["budgets"] });
     },
   });
 }

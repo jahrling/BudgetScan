@@ -85,6 +85,7 @@ async def total_spend(
         select(func.coalesce(func.sum(LineItem.amount_cents), 0))
         .select_from(LineItem)
         .join(Transaction, Transaction.id == LineItem.transaction_id)
+        .where(Transaction.excluded.is_(None))
     )
     if category_ids is not None:
         if not category_ids:
@@ -125,6 +126,7 @@ async def spend_by_category(
         .select_from(LineItem)
         .join(Transaction, Transaction.id == LineItem.transaction_id)
         .join(Category, Category.id == LineItem.category_id)
+        .where(Transaction.excluded.is_(None))
         .group_by(Category.id, Category.name)
     )
     stmt = _apply_date_filter(stmt, date_from=date_from, date_to=date_to)

@@ -8,6 +8,8 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  EyeOff,
+  Eye,
   Plus,
   Search,
   Sparkles,
@@ -27,6 +29,7 @@ import { MerchantCombobox } from "../components/MerchantCombobox";
 import { SplitEditor } from "../components/SplitEditor";
 import { useAccounts, useCreateAccount } from "../hooks/useAccounts";
 import { useCategories } from "../hooks/useCategories";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   useTransactions,
   useTransaction,
@@ -97,6 +100,7 @@ export default function Transactions() {
   const [filterAccount, setFilterAccount] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [filterCategory, setFilterCategory] = useState("");
+  const [filterExcluded, setFilterExcluded] = useState("");
   const [page, setPage] = useState(0);
   const [sorts, setSorts] = useState<SortSpec[]>([{ field: "posted_at", dir: "desc" }]);
   const pageSize = 50;
@@ -104,6 +108,7 @@ export default function Transactions() {
   const sortParam = sorts.map((s) => `${s.field}:${s.dir}`).join(",");
   const queryParams: Record<string, string> = {
     ...filters,
+    excluded: filters.excluded ?? "include",
     offset: String(page * pageSize),
     limit: String(pageSize),
     sort: sortParam,
@@ -153,6 +158,7 @@ export default function Transactions() {
     if (filterAccount) f.account_id = filterAccount;
     if (filterStatus) f.status = filterStatus;
     if (filterCategory) f.category_id = filterCategory;
+    if (filterExcluded) f.excluded = filterExcluded;
     setFilters(f);
     setPage(0);
     setSearchOpen(false);
@@ -165,6 +171,7 @@ export default function Transactions() {
     setFilterAccount("");
     setFilterStatus("");
     setFilterCategory("");
+    setFilterExcluded("");
     setFilters({ date_from: new Date(from).toISOString() });
     setPage(0);
   }
@@ -178,6 +185,7 @@ export default function Transactions() {
     if (key === "account_id") setFilterAccount("");
     if (key === "status") setFilterStatus("");
     if (key === "category_id") setFilterCategory("");
+    if (key === "excluded") setFilterExcluded("");
     setPage(0);
   }
 
@@ -272,6 +280,7 @@ export default function Transactions() {
       return c ? c.name : `Category #${value}`;
     }
     if (key === "status") return value;
+    if (key === "excluded") return value === "only" ? "Excluded only" : value === "hide" ? "Hiding excluded" : "Including excluded";
     if (key === "date_from") return `From ${new Date(value).toLocaleDateString()}`;
     if (key === "date_to") return `To ${new Date(value).toLocaleDateString()}`;
     return `${key}: ${value}`;
@@ -280,7 +289,7 @@ export default function Transactions() {
   return (
     <Layout>
       <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-        <h1 className="text-xl font-bold">Transactions</h1>
+        <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Transactions</h1>
         <div className="flex flex-wrap gap-2">
           <SnapReceiptButton label="" variant="outline" />
           <Button
@@ -330,7 +339,7 @@ export default function Transactions() {
           {Object.entries(filters).map(([key, value]) => (
             <span
               key={key}
-              className="inline-flex items-center gap-1 rounded-full bg-sky-50 border border-sky-200 px-2.5 py-0.5 text-xs text-sky-700"
+              className="inline-flex items-center gap-1 rounded-full bg-sky-50 dark:bg-sky-900/30 border border-sky-200 dark:border-sky-800 px-2.5 py-0.5 text-xs text-sky-700 dark:text-sky-300"
             >
               {filterLabel(key, value)}
               <button
@@ -343,7 +352,7 @@ export default function Transactions() {
           ))}
           <button
             onClick={clearFilters}
-            className="text-xs text-gray-500 hover:text-gray-700 px-1"
+            className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 px-1"
           >
             Clear all
           </button>
@@ -352,8 +361,8 @@ export default function Transactions() {
 
       {/* Transfer detection result */}
       {detectResult && (
-        <div className="rounded-lg border border-sky-200 bg-sky-50 p-2.5 mb-3 flex items-center justify-between">
-          <p className="text-sm text-sky-800">
+        <div className="rounded-lg border border-sky-200 dark:border-sky-800 bg-sky-50 dark:bg-sky-900/30 p-2.5 mb-3 flex items-center justify-between">
+          <p className="text-sm text-sky-800 dark:text-sky-300">
             {detectResult.new_pairs > 0
               ? `Found ${detectResult.new_pairs} new transfer pair${detectResult.new_pairs !== 1 ? "s" : ""} (${detectResult.total_pairs} total).`
               : `No new transfers found (${detectResult.total_pairs} existing).`}
@@ -374,22 +383,22 @@ export default function Transactions() {
       )}
 
       {isLoading ? (
-        <p className="text-gray-500 text-sm">Loading…</p>
+        <p className="text-gray-500 dark:text-gray-400 text-sm">Loading…</p>
       ) : items.length === 0 ? (
-        <p className="text-gray-500 text-sm">
+        <p className="text-gray-500 dark:text-gray-400 text-sm">
           No transactions{hasFilters ? " match your filters" : " yet"}.
         </p>
       ) : (
         <>
-          <div className="text-xs text-gray-500 mb-2">
+          <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">
             {total.toLocaleString()} transactions
           </div>
 
           {/* Table */}
-          <div className="overflow-x-auto min-w-0 rounded-lg border border-gray-200">
+          <div className="overflow-x-auto min-w-0 rounded-lg border border-gray-200 dark:border-gray-700">
             <table className="w-full text-sm min-w-[600px]">
               <thead>
-                <tr className="bg-gray-50 border-b border-gray-200">
+                <tr className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
                   <SortHeader field="posted_at" label="Date" sorts={sorts} onSort={toggleSort} />
                   <SortHeader field="description" label="Description" sorts={sorts} onSort={toggleSort} />
                   <SortHeader field="account_name" label="Account" sorts={sorts} onSort={toggleSort} />
@@ -399,20 +408,25 @@ export default function Transactions() {
                   <th className="px-2 py-2 w-8" />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                 {items.map((t) => (
                   <tr
                     key={t.id}
                     onClick={() => setSelectedId(t.id)}
-                    className="hover:bg-gray-50 cursor-pointer"
+                    className={cn(
+                      "hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer",
+                      t.excluded
+                        ? "bg-gray-50 dark:bg-gray-900/60 opacity-50"
+                        : "bg-white dark:bg-gray-900",
+                    )}
                   >
-                    <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">
+                    <td className="px-3 py-2 text-xs text-gray-600 dark:text-gray-400 whitespace-nowrap">
                       {new Date(t.posted_at).toLocaleDateString()}
                     </td>
                     <td className="px-3 py-2 max-w-[200px]">
                       {t.transfer_pair_id && t.transfer_account_name ? (
                         <>
-                          <div className="truncate font-medium text-violet-700">
+                          <div className="truncate font-medium text-violet-700 dark:text-violet-400">
                             Transfer {t.amount_cents < 0 ? "→" : "←"} {t.transfer_account_name}
                           </div>
                           {t.description && (
@@ -421,7 +435,7 @@ export default function Transactions() {
                         </>
                       ) : (
                         <>
-                          <div className="truncate font-medium text-gray-900">
+                          <div className="truncate font-medium text-gray-900 dark:text-gray-100">
                             {t.merchant_name || t.description || "—"}
                           </div>
                           {t.merchant_name && t.description && t.merchant_name !== t.description && (
@@ -430,7 +444,7 @@ export default function Transactions() {
                         </>
                       )}
                     </td>
-                    <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">
+                    <td className="px-3 py-2 text-xs text-gray-600 dark:text-gray-400 whitespace-nowrap">
                       {t.account_name ?? "—"}
                     </td>
                     <td className="px-3 py-2 text-xs whitespace-nowrap">
@@ -449,7 +463,12 @@ export default function Transactions() {
                         <span className="text-gray-400">—</span>
                       )}
                     </td>
-                    <td className="px-3 py-2 text-right font-semibold tabular-nums whitespace-nowrap">
+                    <td className={cn(
+                      "px-3 py-2 text-right font-semibold tabular-nums whitespace-nowrap",
+                      t.amount_cents > 0
+                        ? "text-emerald-600 dark:text-emerald-400"
+                        : "text-gray-900 dark:text-gray-100",
+                    )}>
                       {formatCents(t.amount_cents)}
                     </td>
                     <td className="px-3 py-2">
@@ -458,22 +477,30 @@ export default function Transactions() {
                           className={cn(
                             "inline-block rounded px-1.5 py-0.5 text-[10px] font-medium",
                             t.status === "confirmed"
-                              ? "bg-emerald-100 text-emerald-700"
+                              ? "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300"
                               : t.status === "split"
-                                ? "bg-green-100 text-green-700"
+                                ? "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300"
                                 : t.status === "final"
-                                  ? "bg-sky-100 text-sky-700"
-                                  : "bg-gray-100 text-gray-600"
+                                  ? "bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300"
+                                  : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400"
                           )}
                         >
                           {t.status}
                         </span>
                         {t.transfer_pair_id && (
                           <span
-                            className="inline-block rounded px-1.5 py-0.5 text-[10px] font-medium bg-violet-100 text-violet-700"
+                            className="inline-block rounded px-1.5 py-0.5 text-[10px] font-medium bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300"
                             title={`Matched transfer pair #${t.transfer_pair_id} (detected via Detect Transfers)`}
                           >
                             xfer
+                          </span>
+                        )}
+                        {t.excluded && (
+                          <span
+                            className="inline-block rounded px-1.5 py-0.5 text-[10px] font-medium bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300"
+                            title="Excluded from budget calculations"
+                          >
+                            excluded
                           </span>
                         )}
                       </div>
@@ -505,7 +532,7 @@ export default function Transactions() {
               >
                 Prev
               </Button>
-              <span className="text-xs text-gray-500">
+              <span className="text-xs text-gray-500 dark:text-gray-400">
                 {page * pageSize + 1}–{Math.min((page + 1) * pageSize, total)}{" "}
                 of {total.toLocaleString()}
               </span>
@@ -533,7 +560,7 @@ export default function Transactions() {
                 type="date"
                 value={dateFrom}
                 onChange={(e) => setDateFrom(e.target.value)}
-                className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+                className="flex h-10 w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
               />
             </div>
             <div className="flex-1">
@@ -542,7 +569,7 @@ export default function Transactions() {
                 type="date"
                 value={dateTo}
                 onChange={(e) => setDateTo(e.target.value)}
-                className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+                className="flex h-10 w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
               />
             </div>
           </div>
@@ -619,6 +646,17 @@ export default function Transactions() {
             </Select>
           </div>
           <div>
+            <Label>Excluded</Label>
+            <Select
+              value={filterExcluded}
+              onChange={(e) => setFilterExcluded(e.target.value)}
+            >
+              <option value="">All</option>
+              <option value="hide">Hide excluded</option>
+              <option value="only">Excluded only</option>
+            </Select>
+          </div>
+          <div>
             <Label>Sort (up to 3)</Label>
             <SortBuilder sorts={sorts} onChange={(s) => { setSorts(s); setPage(0); }} />
           </div>
@@ -645,8 +683,8 @@ export default function Transactions() {
         </DialogTitle>
         <form onSubmit={handleAdd} className="space-y-4">
           {addForm.receipt_id && (
-            <div className="rounded-lg border border-gray-200 p-2 bg-gray-50">
-              <p className="text-xs text-gray-500 mb-1">Attached receipt</p>
+            <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-2 bg-gray-50 dark:bg-gray-700">
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Attached receipt</p>
               <img
                 src={receiptImageUrl(addForm.receipt_id)}
                 alt="Receipt"
@@ -662,7 +700,7 @@ export default function Transactions() {
               onChange={(e) =>
                 setAddForm({ ...addForm, date: e.target.value })
               }
-              className="flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+              className="flex h-10 w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
             />
           </div>
           <div>
@@ -812,8 +850,8 @@ function CategorizationReviewModal({
 
       {applied && applyResult ? (
         <div className="space-y-3">
-          <div className="rounded-lg border border-green-200 bg-green-50 p-3">
-            <p className="text-sm text-green-800">
+          <div className="rounded-lg border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/30 p-3">
+            <p className="text-sm text-green-800 dark:text-green-300">
               Applied {applyResult.applied} categor{applyResult.applied !== 1 ? "ies" : "y"}.
               {applyResult.rules_created > 0 &&
                 ` Created ${applyResult.rules_created} new rule${applyResult.rules_created !== 1 ? "s" : ""} for future matching.`}
@@ -843,7 +881,7 @@ function CategorizationReviewModal({
                 </span>
               </div>
 
-              <div className="max-h-[50vh] overflow-y-auto divide-y divide-gray-100 border border-gray-200 rounded-lg">
+              <div className="max-h-[50vh] overflow-y-auto divide-y divide-gray-100 dark:divide-gray-700 border border-gray-200 dark:border-gray-700 rounded-lg">
                 {categorizable.map((r) => (
                   <label
                     key={r.transaction_id}
@@ -993,7 +1031,7 @@ function SortBuilder({
         <div key={idx} className="flex gap-1.5 items-center">
           <span className="text-[10px] text-gray-400 w-4">{idx + 1}.</span>
           <select
-            className="flex-1 h-8 rounded-md border border-gray-300 bg-white px-2 text-xs"
+            className="flex-1 h-8 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-2 text-xs"
             value={s.field}
             onChange={(e) => updateField(idx, e.target.value as SortField)}
           >
@@ -1004,7 +1042,7 @@ function SortBuilder({
             ))}
           </select>
           <select
-            className="w-16 h-8 rounded-md border border-gray-300 bg-white px-1 text-xs"
+            className="w-16 h-8 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-1 text-xs"
             value={s.dir}
             onChange={(e) => updateDir(idx, e.target.value as SortDir)}
           >
@@ -1051,8 +1089,8 @@ function SortHeader({
   return (
     <th
       className={cn(
-        "px-3 py-2 font-medium text-xs cursor-pointer select-none hover:text-gray-900 whitespace-nowrap",
-        active ? "text-gray-900" : "text-gray-600",
+        "px-3 py-2 font-medium text-xs cursor-pointer select-none hover:text-gray-900 dark:hover:text-gray-200 whitespace-nowrap",
+        active ? "text-gray-900 dark:text-gray-100" : "text-gray-600 dark:text-gray-400",
         className,
       )}
       onClick={() => onSort(field)}
@@ -1120,12 +1158,18 @@ function TransactionDetailView({
   onPrev?: () => void;
   onNext?: () => void;
 }) {
+  const qc = useQueryClient();
   const { data: txn, isLoading } = useTransaction(txnId);
   const replaceMut = useReplaceLineItems();
   const updateMut = useUpdateTransaction();
 
   const [splits, setSplits] = useState<LineItemInput[] | null>(null);
   const [dirty, setDirty] = useState(false);
+
+  async function handleToggleExcluded(exclude: boolean) {
+    await updateMut.mutateAsync({ id: txnId, excluded: exclude ? true : null });
+    await qc.invalidateQueries({ queryKey: ["transactions", txnId] });
+  }
 
   const currentSplits =
     splits ??
@@ -1177,7 +1221,7 @@ function TransactionDetailView({
     return (
       <Layout>
         <div className="flex items-center justify-between mb-4">
-          <button onClick={onBack} className="flex items-center text-sm text-sky-600">
+          <button onClick={onBack} className="flex items-center text-sm text-sky-600 dark:text-sky-400">
             <ChevronLeft className="h-4 w-4" />
             Back
           </button>
@@ -1196,7 +1240,7 @@ function TransactionDetailView({
             </button>
           </div>
         </div>
-        <p className="text-gray-500 text-sm">Loading…</p>
+        <p className="text-gray-500 dark:text-gray-400 text-sm">Loading…</p>
       </Layout>
     );
   }
@@ -1210,7 +1254,7 @@ function TransactionDetailView({
       <div className="flex items-center justify-between mb-4">
         <button
           onClick={onBack}
-          className="flex items-center text-sm text-sky-600"
+          className="flex items-center text-sm text-sky-600 dark:text-sky-400"
         >
           <ChevronLeft className="h-4 w-4" />
           Back
@@ -1222,8 +1266,8 @@ function TransactionDetailView({
             className={cn(
               "p-1.5 rounded-md border",
               onPrev
-                ? "border-gray-300 text-gray-600 hover:bg-gray-100"
-                : "border-gray-200 text-gray-300 cursor-not-allowed",
+                ? "border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+                : "border-gray-200 dark:border-gray-700 text-gray-300 dark:text-gray-600 cursor-not-allowed",
             )}
             title="Previous transaction"
           >
@@ -1235,8 +1279,8 @@ function TransactionDetailView({
             className={cn(
               "p-1.5 rounded-md border",
               onNext
-                ? "border-gray-300 text-gray-600 hover:bg-gray-100"
-                : "border-gray-200 text-gray-300 cursor-not-allowed",
+                ? "border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+                : "border-gray-200 dark:border-gray-700 text-gray-300 dark:text-gray-600 cursor-not-allowed",
             )}
             title="Next transaction"
           >
@@ -1245,38 +1289,58 @@ function TransactionDetailView({
         </div>
       </div>
 
-      <div className="bg-white rounded-lg border border-gray-200 p-4 mb-4">
+      {txn.excluded && (
+        <div className="rounded-lg border border-orange-200 dark:border-orange-800 bg-orange-50 dark:bg-orange-900/30 p-2.5 mb-3 flex items-center justify-between">
+          <p className="text-sm text-orange-800 dark:text-orange-300">
+            This transaction is excluded from budget calculations.
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handleToggleExcluded(false)}
+            disabled={updateMut.isPending}
+          >
+            <Eye className="h-3.5 w-3.5 mr-1" />
+            Include
+          </Button>
+        </div>
+      )}
+
+      <div className={cn(
+        "bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 mb-4",
+        txn.excluded && "opacity-50",
+      )}>
         <div className="flex justify-between items-start">
           <div>
-            <h2 className="font-semibold">
+            <h2 className="font-semibold text-gray-900 dark:text-gray-100">
               {txn.merchant_name || txn.description || "Transaction"}
             </h2>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-gray-500 dark:text-gray-400">
               {new Date(txn.posted_at).toLocaleDateString()}
               {txn.account_name && (
-                <span className="ml-2 inline-flex items-center rounded bg-gray-100 px-1.5 py-0.5 text-gray-600">
+                <span className="ml-2 inline-flex items-center rounded bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 text-gray-600 dark:text-gray-400">
                   {txn.account_name}
                 </span>
               )}
             </p>
           </div>
-          <span className="text-lg font-bold">
+          <span className="text-lg font-bold text-gray-900 dark:text-gray-100">
             {formatCents(txn.amount_cents)}
           </span>
         </div>
         {txn.description && txn.merchant_name && (
-          <p className="text-sm text-gray-600 mt-1">{txn.description}</p>
+          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{txn.description}</p>
         )}
         {txn.receipt_id && (
           <img
             src={receiptImageUrl(txn.receipt_id)}
             alt="Receipt"
-            className="mt-3 max-h-40 mx-auto rounded border border-gray-200"
+            className="mt-3 max-h-40 mx-auto rounded border border-gray-200 dark:border-gray-700"
           />
         )}
       </div>
 
-      <h3 className="text-sm font-semibold mb-2">Line Items</h3>
+      <h3 className="text-sm font-semibold mb-2 text-gray-900 dark:text-gray-100">Line Items</h3>
 
       {prefilled && !dirty && (
         <p className="text-xs text-amber-600 mb-2">
@@ -1305,7 +1369,7 @@ function TransactionDetailView({
         </Button>
 
         {txn.status === "confirmed" ? (
-          <span className="inline-flex items-center rounded-md bg-emerald-100 text-emerald-700 px-3 py-2">
+          <span className="inline-flex items-center rounded-md bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 px-3 py-2">
             <Check className="h-4 w-4" />
           </span>
         ) : (
@@ -1316,6 +1380,16 @@ function TransactionDetailView({
           >
             <Check className="h-4 w-4 mr-1" />
             {updateMut.isPending || replaceMut.isPending ? "…" : "Confirm"}
+          </Button>
+        )}
+        {!txn.excluded && (
+          <Button
+            variant="outline"
+            onClick={() => handleToggleExcluded(true)}
+            disabled={updateMut.isPending}
+            title="Exclude from budget calculations"
+          >
+            <EyeOff className="h-4 w-4" />
           </Button>
         )}
       </div>

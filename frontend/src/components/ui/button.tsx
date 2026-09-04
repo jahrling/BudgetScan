@@ -4,8 +4,8 @@ import { cn } from "../../lib/utils";
 const variants = {
   default: "bg-sky-600 text-white hover:bg-sky-700",
   destructive: "bg-red-600 text-white hover:bg-red-700",
-  outline: "border border-gray-300 bg-white hover:bg-gray-50 text-gray-700",
-  ghost: "hover:bg-gray-100 text-gray-700",
+  outline: "border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200",
+  ghost: "hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300",
 } as const;
 
 const sizes = {
