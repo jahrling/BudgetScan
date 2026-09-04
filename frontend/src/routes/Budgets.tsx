@@ -1072,9 +1072,8 @@ function BudgetTransactionPanel({
 }) {
   const endDate = periodEnd.slice(0, 10);
   const params: Record<string, string> = {
-    ...(effectiveIds.length > 1
-      ? { category_ids: effectiveIds.join(",") }
-      : { category_id: String(categoryId) }),
+    category_id: String(categoryId),
+    ...(effectiveIds.length > 1 ? { category_ids: effectiveIds.join(",") } : {}),
     date_from: periodStart,
     date_to: endDate,
     sort: "posted_at:desc",
