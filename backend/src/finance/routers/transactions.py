@@ -43,6 +43,7 @@ async def list_transactions(
     account_id: int | None = None,
     status: str | None = None,
     category_id: int | None = None,
+    category_ids: str | None = Query(None, description="Comma-separated category IDs (overrides category_id)"),
     excluded: str | None = Query(None, description="'only' = excluded only, 'include' = all, omit/null = hide excluded"),
     sort_by: str | None = None,
     sort_dir: str = "desc",
@@ -70,6 +71,7 @@ async def list_transactions(
         account_id=account_id,
         status=status,
         category_id=category_id,
+        category_ids=[int(x) for x in category_ids.split(",") if x.strip()] if category_ids else None,
         excluded=excluded,
         sort_specs=sort_specs,
     )

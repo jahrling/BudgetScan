@@ -70,6 +70,17 @@ export default function Budgets() {
     () => new Set(categories.filter((c) => c.is_income).map((c) => c.id)),
     [categories],
   );
+  const childrenMap = useMemo(() => {
+    const m = new Map<number, number[]>();
+    for (const c of categories) {
+      if (c.parent_id != null) {
+        const arr = m.get(c.parent_id);
+        if (arr) arr.push(c.id);
+        else m.set(c.parent_id, [c.id]);
+      }
+    }
+    return m;
+  }, [categories]);
   const statusMap = useMemo(
     () => new Map(status.map((s) => [s.category_id, s])),
     [status],
@@ -326,6 +337,8 @@ export default function Budgets() {
                   const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
                   return `${y}-${String(m).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
                 })();
+                const budgetedCatIds = new Set(budgets.map((b) => b.category_id));
+                const effectiveIds = collectEffectiveIds(selectedCategoryId, childrenMap, budgetedCatIds);
 
                 return (
                   <div className="md:grid md:grid-cols-5 md:gap-4">
@@ -336,6 +349,7 @@ export default function Budgets() {
                       <BudgetTransactionPanel
                         categoryId={selectedCategoryId}
                         categoryName={selectedName}
+                        effectiveIds={effectiveIds}
                         periodStart={periodStart}
                         periodEnd={periodEnd}
                         onReset={() => setSelectedCategoryId(null)}
@@ -1027,22 +1041,40 @@ function AutoBudgetPanel({
   );
 }
 
+function collectEffectiveIds(
+  catId: number,
+  childrenMap: Map<number, number[]>,
+  budgetedIds: Set<number>,
+): number[] {
+  const result = [catId];
+  for (const childId of childrenMap.get(catId) ?? []) {
+    if (!budgetedIds.has(childId)) {
+      result.push(...collectEffectiveIds(childId, childrenMap, budgetedIds));
+    }
+  }
+  return result;
+}
+
 function BudgetTransactionPanel({
   categoryId,
   categoryName,
+  effectiveIds,
   periodStart,
   periodEnd,
   onReset,
 }: {
   categoryId: number;
   categoryName: string;
+  effectiveIds: number[];
   periodStart: string;
   periodEnd: string;
   onReset: () => void;
 }) {
   const endDate = periodEnd.slice(0, 10);
   const params: Record<string, string> = {
-    category_id: String(categoryId),
+    ...(effectiveIds.length > 1
+      ? { category_ids: effectiveIds.join(",") }
+      : { category_id: String(categoryId) }),
     date_from: periodStart,
     date_to: endDate,
     sort: "posted_at:desc",

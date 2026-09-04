@@ -34,6 +34,7 @@ async def list_transactions(
     account_id: int | None = None,
     status: str | None = None,
     category_id: int | None = None,
+    category_ids: list[int] | None = None,
     excluded: str | None = None,
     sort_specs: list[tuple[str, str]] | None = None,
 ) -> tuple[list[Transaction], int]:
@@ -62,7 +63,12 @@ async def list_transactions(
         q = q.where(Transaction.account_id == account_id)
     if status:
         q = q.where(Transaction.status == status)
-    if category_id:
+    if category_ids:
+        sub = select(LineItem.transaction_id).where(
+            LineItem.category_id.in_(category_ids)
+        ).distinct()
+        q = q.where(Transaction.id.in_(sub))
+    elif category_id:
         sub = select(LineItem.transaction_id).where(
             LineItem.category_id == category_id
         ).distinct()
