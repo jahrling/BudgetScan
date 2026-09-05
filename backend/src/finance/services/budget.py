@@ -481,16 +481,21 @@ async def get_month_comparison(
 
 
 async def seed_month(
-    session: AsyncSession, target_month: str
+    session: AsyncSession, target_month: str, *, replace: bool = False
 ) -> list[Budget]:
     existing = await session.execute(
         select(Budget).where(Budget.year_month == target_month)
     )
-    if list(existing.scalars().all()):
-        raise HTTPException(
-            status_code=409,
-            detail=f"Budgets already exist for {target_month}",
-        )
+    existing_list = list(existing.scalars().all())
+    if existing_list:
+        if not replace:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Budgets already exist for {target_month}",
+            )
+        for b in existing_list:
+            await session.delete(b)
+        await session.flush()
 
     source_result = await session.execute(
         select(Budget.year_month)

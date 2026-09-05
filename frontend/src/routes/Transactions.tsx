@@ -886,8 +886,8 @@ function CategorizationReviewModal({
                   <label
                     key={r.transaction_id}
                     className={cn(
-                      "flex items-start gap-3 px-3 py-2.5 cursor-pointer hover:bg-gray-50",
-                      checked.has(r.transaction_id) && "bg-sky-50/50",
+                      "flex items-start gap-3 px-3 py-2.5 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700",
+                      checked.has(r.transaction_id) && "bg-sky-50/50 dark:bg-sky-900/30",
                     )}
                   >
                     <div className="pt-0.5">
@@ -911,10 +911,10 @@ function CategorizationReviewModal({
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-baseline justify-between gap-2">
-                        <span className="text-sm font-medium text-gray-900 truncate">
+                        <span className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
                           {r.description || `Transaction #${r.transaction_id}`}
                         </span>
-                        <span className="text-xs text-gray-500 tabular-nums whitespace-nowrap">
+                        <span className="text-xs text-gray-500 dark:text-gray-400 tabular-nums whitespace-nowrap">
                           {formatCents(r.amount_cents)}
                         </span>
                       </div>
@@ -925,21 +925,21 @@ function CategorizationReviewModal({
                             <span className="text-xs text-gray-300">→</span>
                           </>
                         )}
-                        <span className="text-xs font-medium text-sky-700">{r.category_name}</span>
+                        <span className="text-xs font-medium text-sky-700 dark:text-sky-300">{r.category_name}</span>
                       </div>
                       <div className="flex items-center gap-1.5 mt-0.5">
                         <span
                           className={cn(
                             "inline-block rounded px-1.5 py-0.5 text-[10px] font-medium",
                             r.tier === "exact"
-                              ? "bg-green-100 text-green-700"
+                              ? "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300"
                               : r.tier === "substring"
-                                ? "bg-emerald-100 text-emerald-700"
+                                ? "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300"
                                 : r.tier === "embedding"
-                                  ? "bg-blue-100 text-blue-700"
+                                  ? "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300"
                                   : r.tier === "llm"
-                                    ? "bg-purple-100 text-purple-700"
-                                    : "bg-gray-100 text-gray-600",
+                                    ? "bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300"
+                                    : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400",
                           )}
                         >
                           {TIER_LABELS[r.tier] || r.tier}

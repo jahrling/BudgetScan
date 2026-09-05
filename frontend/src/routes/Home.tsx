@@ -61,14 +61,14 @@ function BudgetCard({ b }: { b: BudgetStatusItem }) {
           </span>
           <div className="min-w-0">
             <div className="flex items-center gap-1">
-              <span className="font-medium text-sm truncate">
+              <span className="font-medium text-sm truncate text-gray-900 dark:text-gray-100">
                 {b.category_name}
               </span>
               {b.is_pinned && (
                 <Pin className="h-3 w-3 text-sky-500 fill-sky-500" />
               )}
             </div>
-            <div className="text-[11px] text-gray-500">
+            <div className="text-[11px] text-gray-500 dark:text-gray-400">
               {b.days_remaining}d left
             </div>
           </div>
@@ -82,7 +82,7 @@ function BudgetCard({ b }: { b: BudgetStatusItem }) {
           >
             {formatCents(b.remaining_cents)}
           </div>
-          <div className="text-[11px] text-gray-500 tabular-nums">
+          <div className="text-[11px] text-gray-500 dark:text-gray-400 tabular-nums">
             of {formatCents(b.budgeted_cents)}
           </div>
         </div>

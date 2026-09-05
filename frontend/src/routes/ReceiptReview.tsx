@@ -175,7 +175,7 @@ export default function ReceiptReview() {
   return (
     <Layout>
       <div className="space-y-4 pb-4">
-        <h1 className="text-lg font-semibold">Review receipt</h1>
+        <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Review receipt</h1>
 
         {/* Receipt image */}
         <div>
@@ -194,14 +194,14 @@ export default function ReceiptReview() {
           <img
             src={receiptImageUrl(receiptId)}
             alt="Receipt"
-            className={`rounded-lg border border-gray-200 mx-auto transition-all ${
+            className={`rounded-lg border border-gray-200 dark:border-gray-700 mx-auto transition-all ${
               imageExpanded ? "max-h-[80vh]" : "max-h-32"
             }`}
           />
         </div>
 
         {/* Merchant & date */}
-        <div className="rounded-lg border border-gray-200 bg-white p-3 space-y-3">
+        <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 space-y-3">
           <div>
             <Label className="text-xs text-gray-500">Merchant</Label>
             <Input
@@ -223,7 +223,7 @@ export default function ReceiptReview() {
             </div>
             <div className="flex-1">
               <Label className="text-xs text-gray-500">Total</Label>
-              <div className="h-9 flex items-center text-sm font-semibold text-gray-900 px-3 border border-gray-200 rounded-md bg-gray-50">
+              <div className="h-9 flex items-center text-sm font-semibold text-gray-900 dark:text-gray-100 px-3 border border-gray-200 dark:border-gray-700 rounded-md bg-gray-50 dark:bg-gray-700">
                 {formatCents(totalCents)}
               </div>
             </div>
@@ -239,8 +239,8 @@ export default function ReceiptReview() {
 
         {/* Account */}
         {accounts.length > 1 && (
-          <div className="rounded-lg border border-gray-200 bg-white p-3">
-            <Label className="text-xs text-gray-500">Account</Label>
+          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
+            <Label className="text-xs text-gray-500 dark:text-gray-400">Account</Label>
             <Select
               value={accountId ?? ""}
               onChange={(e) =>
@@ -262,16 +262,16 @@ export default function ReceiptReview() {
         {/* Line items */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-gray-700">
+            <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
               Items ({items.length})
             </h2>
             <span
               className={`text-xs font-medium px-2 py-0.5 rounded-full ${
                 drift === 0
-                  ? "bg-green-100 text-green-700"
+                  ? "bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300"
                   : Math.abs(drift) <= 100
-                    ? "bg-amber-100 text-amber-700"
-                    : "bg-red-100 text-red-700"
+                    ? "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300"
+                    : "bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300"
               }`}
             >
               {drift === 0
@@ -285,10 +285,10 @@ export default function ReceiptReview() {
           {items.map((item, idx) => (
             <div
               key={idx}
-              className={`rounded-lg border bg-white p-3 space-y-2 ${
+              className={`rounded-lg border bg-white dark:bg-gray-800 p-3 space-y-2 ${
                 item.user_modified
-                  ? "border-sky-300 ring-1 ring-sky-100"
-                  : "border-gray-200"
+                  ? "border-sky-300 dark:border-sky-700 ring-1 ring-sky-100 dark:ring-sky-900"
+                  : "border-gray-200 dark:border-gray-700"
               }`}
             >
               <div className="flex items-start gap-2">
@@ -363,7 +363,7 @@ export default function ReceiptReview() {
 
         {/* Drift / tax rounding note */}
         {drift !== 0 && (
-          <div className="text-xs text-gray-500 bg-gray-50 rounded-lg p-2">
+          <div className="text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800 rounded-lg p-2">
             {Math.abs(drift) <= 100
               ? `A "${drift > 0 ? "Tax / rounding" : "Adjustment"}" line of ${formatCents(Math.abs(drift))} will be added automatically.`
               : `Items are ${formatCents(Math.abs(drift))} ${drift > 0 ? "under" : "over"} the total. Adjust items or a balancer line will be created.`}

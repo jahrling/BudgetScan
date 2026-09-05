@@ -65,18 +65,18 @@ export default function ReceiptProcessing() {
     return (
       <Layout>
         <div className="space-y-4">
-          <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3">
+          <div className="flex items-start gap-2 rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/30 p-3">
             <AlertTriangle className="h-5 w-5 text-red-500 shrink-0 mt-0.5" />
             <div className="text-sm">
-              <p className="font-semibold text-red-700">Could not read receipt</p>
-              <p className="text-red-700">{receipt.ocr_error || "Unknown error"}</p>
+              <p className="font-semibold text-red-700 dark:text-red-300">Could not read receipt</p>
+              <p className="text-red-700 dark:text-red-400">{receipt.ocr_error || "Unknown error"}</p>
             </div>
           </div>
 
           <img
             src={receiptImageUrl(receipt.id)}
             alt="Receipt"
-            className="rounded-lg border border-gray-200 max-h-64 mx-auto"
+            className="rounded-lg border border-gray-200 dark:border-gray-700 max-h-64 mx-auto"
           />
 
           <div className="flex gap-2">
@@ -109,9 +109,9 @@ export default function ReceiptProcessing() {
         <img
           src={receiptImageUrl(receipt.id)}
           alt="Receipt"
-          className="rounded-lg border border-gray-200 max-h-72 mx-auto mb-4"
+          className="rounded-lg border border-gray-200 dark:border-gray-700 max-h-72 mx-auto mb-4"
         />
-        <div className="flex items-center justify-center gap-2 text-gray-600">
+        <div className="flex items-center justify-center gap-2 text-gray-600 dark:text-gray-400">
           <Loader2 className="h-5 w-5 animate-spin" />
           <span className="text-sm">Reading receipt…</span>
         </div>

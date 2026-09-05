@@ -506,9 +506,9 @@ function CandidateReview({
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <div className="text-sm font-medium truncate">
+                  <div className="text-sm font-medium truncate text-gray-900 dark:text-gray-100">
                     {c.description || (
-                      <span className="text-gray-400 italic">No description</span>
+                      <span className="text-gray-400 dark:text-gray-500 italic">No description</span>
                     )}
                   </div>
                   <div className="text-xs text-gray-500">{c.posted_at.slice(0, 10)}</div>
@@ -523,7 +523,7 @@ function CandidateReview({
                   )}
                 </div>
                 <div className="text-right shrink-0">
-                  <div className="text-sm font-semibold tabular-nums">
+                  <div className="text-sm font-semibold tabular-nums text-gray-900 dark:text-gray-100">
                     {formatCents(c.amount_cents)}
                   </div>
                   <span
@@ -552,7 +552,7 @@ function CandidateReview({
                   </p>
                   <div className="flex justify-between gap-2">
                     <div className="min-w-0">
-                      <p className={`truncate ${c.match_description !== c.description ? "text-orange-700 font-medium" : "text-gray-600"}`}>
+                      <p className={`truncate ${c.match_description !== c.description ? "text-orange-700 dark:text-orange-400 font-medium" : "text-gray-600 dark:text-gray-400"}`}>
                         {c.match_description}
                       </p>
                       {c.match_posted_at && (
@@ -563,7 +563,7 @@ function CandidateReview({
                       )}
                     </div>
                     <div className="text-right shrink-0">
-                      <p className={`font-semibold tabular-nums ${c.match_amount_cents !== c.amount_cents ? "text-orange-700" : "text-gray-600"}`}>
+                      <p className={`font-semibold tabular-nums ${c.match_amount_cents !== c.amount_cents ? "text-orange-700 dark:text-orange-400" : "text-gray-600 dark:text-gray-400"}`}>
                         {c.match_amount_cents !== null ? formatCents(c.match_amount_cents) : "—"}
                       </p>
                     </div>
