@@ -40,6 +40,9 @@ data/
 # Generated
 REPO_MAP.txt
 
+# Claude Code
+.claude/
+
 # IDE
 .vscode/
 .idea/

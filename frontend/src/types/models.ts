@@ -84,6 +84,32 @@ export interface MonthComparison {
   items: MonthComparisonItem[];
 }
 
+export interface Rule {
+  id: number;
+  payee: string;
+  normalized_payee: string;
+  category_path: string;
+  category_id: number | null;
+  amount_cents: number | null;
+  transfer_account: string | null;
+  kind: string;
+  source: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RuleListResponse {
+  rules: Rule[];
+  total: number;
+}
+
+export interface DraftGenerationResponse {
+  drafts_created: number;
+  skipped_existing: number;
+  conflicts: { payee: string; category_ids: number[]; transaction_count: number }[];
+}
+
 export interface Account {
   id: number;
   name: string;
@@ -136,6 +162,9 @@ export interface Transaction {
   category_confidence: number | null;
   needs_review: boolean;
   excluded: boolean | null;
+  is_recurring: boolean | null;
+  recurrence_cadence: string | null;
+  recurrence_group_id: number | null;
   merchant_name: string | null;
   account_name: string | null;
   category_name: string | null;

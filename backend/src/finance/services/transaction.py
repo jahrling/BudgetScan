@@ -36,6 +36,7 @@ async def list_transactions(
     category_id: int | None = None,
     category_ids: list[int] | None = None,
     excluded: str | None = None,
+    is_recurring: bool | None = None,
     sort_specs: list[tuple[str, str]] | None = None,
 ) -> tuple[list[Transaction], int]:
     q = select(Transaction)
@@ -79,6 +80,11 @@ async def list_transactions(
         pass
     else:
         q = q.where(Transaction.excluded.is_(None))
+
+    if is_recurring is True:
+        q = q.where(Transaction.is_recurring.is_(True))
+    elif is_recurring is False:
+        q = q.where(Transaction.is_recurring.isnot(True))
 
     count_q = select(func.count()).select_from(q.subquery())
     total = (await session.execute(count_q)).scalar() or 0

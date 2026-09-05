@@ -1,0 +1,178 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 820" font-family="system-ui, -apple-system, sans-serif">
+  <defs>
+    <filter id="shadow" x="-2%" y="-2%" width="104%" height="104%">
+      <feDropShadow dx="0" dy="1" stdDeviation="2" flood-opacity="0.08"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="900" height="820" fill="#f8fafc" rx="12"/>
+
+  <!-- Title bar -->
+  <rect x="0" y="0" width="900" height="56" fill="#fff" rx="12"/>
+  <rect x="0" y="44" width="900" height="12" fill="#fff"/>
+  <line x1="0" y1="56" x2="900" y2="56" stroke="#e2e8f0" stroke-width="1"/>
+  <text x="32" y="36" font-size="20" font-weight="700" fill="#0f172a">Concept B — Side Panel Drill-In</text>
+  <text x="530" y="36" font-size="13" fill="#64748b">Transactions replace suggestions panel when a row is selected</text>
+
+  <!-- === LEFT COLUMN: Budget rows (narrower, list mode) === -->
+
+  <!-- Active/selected row: Groceries -->
+  <rect x="32" y="76" width="340" height="90" rx="8" fill="#fff" stroke="#0ea5e9" stroke-width="1.5" filter="url(#shadow)"/>
+  <rect x="36" y="80" width="4" height="82" rx="2" fill="#0ea5e9"/>
+  <text x="52" y="100" font-size="13" font-weight="600" fill="#0369a1">Food &amp; Dining: Groceries</text>
+  <text x="352" y="100" font-size="12" font-weight="500" fill="#0ea5e9" text-anchor="end">$980.00</text>
+  <!-- Mini slider -->
+  <rect x="52" y="112" width="300" height="5" rx="2.5" fill="#e2e8f0"/>
+  <rect x="52" y="112" width="150" height="5" rx="2.5" fill="#0ea5e9"/>
+  <rect x="200" y="110" width="2" height="9" rx="1" fill="#94a3b8"/>
+  <text x="52" y="136" font-size="9" fill="#94a3b8">$0</text>
+  <text x="198" y="136" font-size="9" fill="#94a3b8" text-anchor="middle">avg $978</text>
+  <text x="352" y="136" font-size="9" fill="#94a3b8" text-anchor="end">$1,960</text>
+  <!-- Selected indicator -->
+  <text x="352" y="156" font-size="9" font-weight="600" fill="#0ea5e9" text-anchor="end">viewing txns ›</text>
+
+  <!-- Inactive row: Mortgage -->
+  <rect x="32" y="178" width="340" height="90" rx="8" fill="#fff" stroke="#e2e8f0" filter="url(#shadow)"/>
+  <text x="52" y="202" font-size="13" font-weight="600" fill="#1e293b">Home: Mortgage</text>
+  <text x="352" y="202" font-size="12" font-weight="500" fill="#1e293b" text-anchor="end">$2,200.00</text>
+  <rect x="52" y="214" width="300" height="5" rx="2.5" fill="#e2e8f0"/>
+  <rect x="52" y="214" width="170" height="5" rx="2.5" fill="#0ea5e9"/>
+  <rect x="170" y="212" width="2" height="9" rx="1" fill="#94a3b8"/>
+  <text x="52" y="238" font-size="9" fill="#94a3b8">$0</text>
+  <text x="168" y="238" font-size="9" fill="#94a3b8" text-anchor="middle">avg $2,200</text>
+  <text x="352" y="238" font-size="9" fill="#94a3b8" text-anchor="end">$4,400</text>
+
+  <!-- Inactive row: Gas -->
+  <rect x="32" y="280" width="340" height="90" rx="8" fill="#fff" stroke="#e2e8f0" filter="url(#shadow)"/>
+  <text x="52" y="304" font-size="13" font-weight="600" fill="#1e293b">Auto: Gas &amp; Fuel</text>
+  <text x="352" y="304" font-size="12" font-weight="500" fill="#1e293b" text-anchor="end">$170.00</text>
+  <rect x="52" y="316" width="300" height="5" rx="2.5" fill="#e2e8f0"/>
+  <rect x="52" y="316" width="100" height="5" rx="2.5" fill="#0ea5e9"/>
+  <rect x="97" y="314" width="2" height="9" rx="1" fill="#94a3b8"/>
+  <text x="52" y="340" font-size="9" fill="#94a3b8">$0</text>
+  <text x="95" y="340" font-size="9" fill="#94a3b8" text-anchor="middle">avg $165</text>
+  <text x="352" y="340" font-size="9" fill="#94a3b8" text-anchor="end">$500</text>
+
+  <!-- Inactive row: Student Loan -->
+  <rect x="32" y="382" width="340" height="90" rx="8" fill="#fff" stroke="#e2e8f0" filter="url(#shadow)"/>
+  <text x="52" y="406" font-size="13" font-weight="600" fill="#1e293b">Education: Student Loan</text>
+  <text x="352" y="406" font-size="12" font-weight="500" fill="#1e293b" text-anchor="end">$640.00</text>
+  <rect x="52" y="418" width="300" height="5" rx="2.5" fill="#e2e8f0"/>
+  <rect x="52" y="418" width="192" height="5" rx="2.5" fill="#0ea5e9"/>
+  <rect x="190" y="416" width="2" height="9" rx="1" fill="#94a3b8"/>
+  <text x="52" y="442" font-size="9" fill="#94a3b8">$0</text>
+  <text x="188" y="442" font-size="9" fill="#94a3b8" text-anchor="middle">avg $635</text>
+  <text x="352" y="442" font-size="9" fill="#94a3b8" text-anchor="end">$1,280</text>
+
+  <!-- More rows indicator -->
+  <text x="200" y="494" font-size="11" fill="#94a3b8" text-anchor="middle">↓ 8 more budgets</text>
+
+  <!-- === RIGHT PANEL: Transaction detail === -->
+  <rect x="392" y="76" width="476" height="620" rx="8" fill="#fff" stroke="#e2e8f0" filter="url(#shadow)"/>
+
+  <!-- Panel header -->
+  <rect x="392" y="76" width="476" height="50" rx="8" fill="#f0f9ff"/>
+  <rect x="392" y="118" width="476" height="8" fill="#f0f9ff"/>
+  <text x="416" y="106" font-size="15" font-weight="700" fill="#0369a1">Food &amp; Dining: Groceries</text>
+  <!-- Close X -->
+  <circle cx="844" cy="101" r="12" fill="#e0f2fe" stroke="#bae6fd"/>
+  <text x="844" y="106" font-size="14" font-weight="600" fill="#0369a1" text-anchor="middle">×</text>
+
+  <!-- Summary stats row -->
+  <rect x="412" y="140" width="140" height="50" rx="6" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="422" y="158" font-size="9" font-weight="600" fill="#64748b">BUDGET</text>
+  <text x="422" y="178" font-size="16" font-weight="700" fill="#0ea5e9">$980.00</text>
+
+  <rect x="564" y="140" width="140" height="50" rx="6" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="574" y="158" font-size="9" font-weight="600" fill="#64748b">3-MO AVG</text>
+  <text x="574" y="178" font-size="16" font-weight="700" fill="#475569">$978.06</text>
+
+  <rect x="716" y="140" width="132" height="50" rx="6" fill="#f0fdf4" stroke="#bbf7d0"/>
+  <text x="726" y="158" font-size="9" font-weight="600" fill="#15803d">DELTA</text>
+  <text x="726" y="178" font-size="16" font-weight="700" fill="#16a34a">+$1.94</text>
+
+  <!-- Month: August -->
+  <rect x="412" y="206" width="436" height="24" rx="4" fill="#f1f5f9"/>
+  <text x="422" y="222" font-size="11" font-weight="700" fill="#475569">August 2026</text>
+  <text x="838" y="222" font-size="11" font-weight="700" fill="#475569" text-anchor="end">$1,042.17</text>
+
+  <g font-size="11">
+    <text x="422" y="250" fill="#334155">Kroger</text>
+    <text x="838" y="250" fill="#334155" text-anchor="end">$187.43</text>
+    <text x="422" y="264" font-size="9" fill="#94a3b8">Aug 22</text>
+
+    <line x1="422" y1="272" x2="838" y2="272" stroke="#f1f5f9"/>
+
+    <text x="422" y="288" fill="#334155">Costco Wholesale</text>
+    <text x="838" y="288" fill="#334155" text-anchor="end">$312.56</text>
+    <text x="422" y="302" font-size="9" fill="#94a3b8">Aug 15</text>
+
+    <line x1="422" y1="310" x2="838" y2="310" stroke="#f1f5f9"/>
+
+    <text x="422" y="326" fill="#334155">Trader Joe's</text>
+    <text x="838" y="326" fill="#334155" text-anchor="end">$94.22</text>
+    <text x="422" y="340" font-size="9" fill="#94a3b8">Aug 8</text>
+
+    <line x1="422" y1="348" x2="838" y2="348" stroke="#f1f5f9"/>
+
+    <text x="422" y="364" fill="#334155">Kroger</text>
+    <text x="838" y="364" fill="#334155" text-anchor="end">$203.81</text>
+    <text x="422" y="378" font-size="9" fill="#94a3b8">Aug 3</text>
+
+    <line x1="422" y1="386" x2="838" y2="386" stroke="#f1f5f9"/>
+
+    <text x="422" y="402" fill="#334155">Walmart Grocery</text>
+    <text x="838" y="402" fill="#334155" text-anchor="end">$244.15</text>
+    <text x="422" y="416" font-size="9" fill="#94a3b8">Aug 1</text>
+  </g>
+
+  <!-- Month: July -->
+  <rect x="412" y="434" width="436" height="24" rx="4" fill="#f1f5f9"/>
+  <text x="422" y="450" font-size="11" font-weight="700" fill="#475569">July 2026</text>
+  <text x="838" y="450" font-size="11" font-weight="700" fill="#475569" text-anchor="end">$934.18</text>
+
+  <g font-size="11">
+    <text x="422" y="478" fill="#334155">Kroger</text>
+    <text x="838" y="478" fill="#334155" text-anchor="end">$156.90</text>
+    <text x="422" y="492" font-size="9" fill="#94a3b8">Jul 25</text>
+
+    <line x1="422" y1="500" x2="838" y2="500" stroke="#f1f5f9"/>
+
+    <text x="422" y="516" fill="#334155">Costco Wholesale</text>
+    <text x="838" y="516" fill="#334155" text-anchor="end">$289.44</text>
+    <text x="422" y="530" font-size="9" fill="#94a3b8">Jul 12</text>
+
+    <line x1="422" y1="538" x2="838" y2="538" stroke="#f1f5f9"/>
+
+    <text x="422" y="554" fill="#94a3b8" font-style="italic">+ 3 more transactions</text>
+  </g>
+
+  <!-- Month: June -->
+  <rect x="412" y="572" width="436" height="24" rx="4" fill="#f1f5f9"/>
+  <text x="422" y="588" font-size="11" font-weight="700" fill="#475569">June 2026</text>
+  <text x="838" y="588" font-size="11" font-weight="700" fill="#475569" text-anchor="end">$957.83</text>
+
+  <text x="422" y="616" font-size="11" fill="#94a3b8" font-style="italic">+ 6 transactions</text>
+
+  <!-- Mini bar chart showing monthly totals -->
+  <rect x="412" y="640" width="436" height="44" rx="6" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="422" y="656" font-size="9" font-weight="600" fill="#64748b">MONTHLY TREND</text>
+  <!-- Bars -->
+  <rect x="510" y="648" width="60" height="28" rx="3" fill="#bae6fd" opacity="0.6"/>
+  <text x="540" y="670" font-size="8" fill="#0369a1" text-anchor="middle">Jun</text>
+  <rect x="580" y="650" width="60" height="26" rx="3" fill="#bae6fd" opacity="0.8"/>
+  <text x="610" y="670" font-size="8" fill="#0369a1" text-anchor="middle">Jul</text>
+  <rect x="650" y="644" width="60" height="32" rx="3" fill="#0ea5e9"/>
+  <text x="680" y="670" font-size="8" fill="#fff" text-anchor="middle">Aug</text>
+  <!-- Budget line -->
+  <line x1="500" y1="648" x2="720" y2="648" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="4,3"/>
+  <text x="724" y="652" font-size="8" fill="#f59e0b">budget</text>
+
+  <!-- Annotation box -->
+  <rect x="32" y="716" width="836" height="86" rx="8" fill="#fff" stroke="#cbd5e1"/>
+  <text x="52" y="742" font-size="14" font-weight="700" fill="#0f172a">How it works</text>
+  <text x="52" y="762" font-size="12" fill="#475569">Clicking a budget row replaces the suggestions sidebar with a scrollable transaction panel for that category.</text>
+  <text x="52" y="780" font-size="12" fill="#475569">Summary stats (budget vs. avg vs. delta) and a mini trend chart give at-a-glance context. The budget</text>
+  <text x="52" y="798" font-size="12" fill="#475569">row stays selected on the left so the user can still adjust the slider while viewing actual transactions.</text>
+</svg>

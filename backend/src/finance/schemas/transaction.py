@@ -33,6 +33,9 @@ class TransactionRead(BaseModel):
     category_confidence: float | None = None
     needs_review: bool = True
     excluded: bool | None = None
+    is_recurring: bool | None = None
+    recurrence_cadence: str | None = None
+    recurrence_group_id: int | None = None
     created_at: datetime
     updated_at: datetime
     merchant_name: str | None = None
@@ -74,3 +77,4 @@ class TransactionListParams(BaseModel):
     status: str | None = None
     category_id: int | None = None
     excluded: str | None = None
+    is_recurring: bool | None = None

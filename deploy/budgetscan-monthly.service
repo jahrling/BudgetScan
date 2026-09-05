@@ -1,0 +1,6 @@
+[Unit]
+Description=BudgetScan monthly categorization run
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/curl -s -X POST http://localhost:8000/api/rules/run-monthly

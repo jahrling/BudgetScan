@@ -186,21 +186,30 @@ async def _tier1_substring(
     )
 
 
+_SOURCE_PRIORITY = {
+    "user_created": 3,
+    "qif_import": 2,
+    "auto_draft": 1,
+    "llm_batch": 1,
+    "seed": 0,
+}
+
+
 def _pick_best(rules: list[MemorizedRule] | list) -> MemorizedRule:
     """From multiple matching rules, pick the best one.
 
     Preference order:
       1. Has a resolved ``category_id`` (non-null).
-      2. Source ``"user_created"`` over ``"qif_import"``.
+      2. Source priority: user_created > qif_import > auto_draft/llm_batch > seed.
       3. Most recently updated (highest ``id`` as tiebreaker).
     """
     if len(rules) == 1:
         return rules[0]
 
-    def sort_key(r: MemorizedRule) -> tuple[bool, bool, int]:
+    def sort_key(r: MemorizedRule) -> tuple[bool, int, int]:
         has_category = r.category_id is not None
-        is_user = r.source == "user_created"
-        return (has_category, is_user, r.id)
+        priority = _SOURCE_PRIORITY.get(r.source, 0)
+        return (has_category, priority, r.id)
 
     return max(rules, key=sort_key)
 

@@ -18,6 +18,7 @@ const ReceiptReview = lazy(() => import('./routes/ReceiptReview'))
 const Login = lazy(() => import('./routes/Login'))
 const Docs = lazy(() => import('./routes/Docs'))
 const QuickenSync = lazy(() => import('./routes/QuickenSync'))
+const Rules = lazy(() => import('./routes/Rules'))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -110,6 +111,14 @@ function App() {
             element={
               <AuthGuard>
                 <ReceiptReview />
+              </AuthGuard>
+            }
+          />
+          <Route
+            path="/rules"
+            element={
+              <AuthGuard>
+                <Rules />
               </AuthGuard>
             }
           />

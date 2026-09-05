@@ -171,7 +171,7 @@ export default function Home() {
         )}
 
         {error && (
-          <p className="text-sm text-red-600">
+          <p className="text-sm text-red-600 dark:text-red-400">
             Couldn’t load budgets — showing last known values when offline.
           </p>
         )}
@@ -208,15 +208,15 @@ export default function Home() {
             <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
               This week’s transactions
               {weekTxns.data && (
-                <span className="ml-2 text-xs font-normal text-gray-500">
+                <span className="ml-2 text-xs font-normal text-gray-500 dark:text-gray-400">
                   {weekTxns.data.items.length}
                 </span>
               )}
             </h2>
             {txnsOpen ? (
-              <ChevronUp className="h-4 w-4 text-gray-500" />
+              <ChevronUp className="h-4 w-4 text-gray-500 dark:text-gray-400" />
             ) : (
-              <ChevronDown className="h-4 w-4 text-gray-500" />
+              <ChevronDown className="h-4 w-4 text-gray-500 dark:text-gray-400" />
             )}
           </button>
           {txnsOpen && (
@@ -225,7 +225,7 @@ export default function Home() {
                 <div className="h-12 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 animate-pulse" />
               )}
               {weekTxns.data && weekTxns.data.items.length === 0 && (
-                <p className="text-xs text-gray-500 px-1">
+                <p className="text-xs text-gray-500 dark:text-gray-400 px-1">
                   Nothing this week yet.
                 </p>
               )}
@@ -239,7 +239,7 @@ export default function Home() {
                     <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
                       {t.merchant_name ?? t.description ?? "Transaction"}
                     </div>
-                    <div className="text-[11px] text-gray-500">
+                    <div className="text-[11px] text-gray-500 dark:text-gray-400">
                       {formatRelDate(t.posted_at)}
                     </div>
                   </div>
@@ -260,7 +260,7 @@ export default function Home() {
             <div className="h-12 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 animate-pulse" />
           )}
           {monthTxns.data && topMerchants.length === 0 && (
-            <p className="text-xs text-gray-500 px-1">No spending yet.</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 px-1">No spending yet.</p>
           )}
           <div className="space-y-1.5">
             {topMerchants.map((m) => (
@@ -270,7 +270,7 @@ export default function Home() {
               >
                 <div className="min-w-0">
                   <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{m.name}</div>
-                  <div className="text-[11px] text-gray-500">
+                  <div className="text-[11px] text-gray-500 dark:text-gray-400">
                     {m.count} {m.count === 1 ? "visit" : "visits"}
                   </div>
                 </div>

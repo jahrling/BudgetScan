@@ -140,6 +140,38 @@ export function useConfirmCategory() {
   });
 }
 
+export function useGenerateRules() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body?: { transaction_ids?: number[] }) =>
+      api.post<{
+        drafts_created: number;
+        batches_processed: number;
+        transactions_covered: number;
+        errors: string[];
+      }>("/transactions/generate-rules", body ?? {}),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["rules"] });
+    },
+  });
+}
+
+export function useDetectRecurring() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      api.post<{
+        groups_found: number;
+        transactions_flagged: number;
+        transactions_cleared: number;
+        by_cadence: Record<string, number>;
+      }>("/transactions/detect-recurring", {}),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["transactions"] });
+    },
+  });
+}
+
 export function useReplaceLineItems() {
   const qc = useQueryClient();
   return useMutation({

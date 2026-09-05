@@ -11,7 +11,9 @@ import {
   EyeOff,
   Eye,
   Plus,
+  Repeat,
   Search,
+  BookOpen,
   Sparkles,
   Trash2,
   X,
@@ -39,6 +41,7 @@ import {
   useUpdateTransaction,
   useCategorizeTransactions,
   useApplyCategories,
+  useGenerateRules,
 } from "../hooks/useTransactions";
 import type { CategorizedTransaction } from "../hooks/useTransactions";
 import { useDetectTransfers } from "../hooks/useTransfers";
@@ -101,6 +104,7 @@ export default function Transactions() {
   const [filterStatus, setFilterStatus] = useState("");
   const [filterCategory, setFilterCategory] = useState("");
   const [filterExcluded, setFilterExcluded] = useState("");
+  const [filterRecurring, setFilterRecurring] = useState("");
   const [page, setPage] = useState(0);
   const [sorts, setSorts] = useState<SortSpec[]>([{ field: "posted_at", dir: "desc" }]);
   const pageSize = 50;
@@ -120,6 +124,7 @@ export default function Transactions() {
   const deleteTxn = useDeleteTransaction();
   const detectMut = useDetectTransfers();
   const categorizeMut = useCategorizeTransactions();
+  const generateRulesMut = useGenerateRules();
 
   const [addOpen, setAddOpen] = useState(false);
   const [addForm, setAddForm] = useState<AddForm>(emptyAdd);
@@ -159,6 +164,7 @@ export default function Transactions() {
     if (filterStatus) f.status = filterStatus;
     if (filterCategory) f.category_id = filterCategory;
     if (filterExcluded) f.excluded = filterExcluded;
+    if (filterRecurring) f.is_recurring = filterRecurring;
     setFilters(f);
     setPage(0);
     setSearchOpen(false);
@@ -172,6 +178,7 @@ export default function Transactions() {
     setFilterStatus("");
     setFilterCategory("");
     setFilterExcluded("");
+    setFilterRecurring("");
     setFilters({ date_from: new Date(from).toISOString() });
     setPage(0);
   }
@@ -186,6 +193,7 @@ export default function Transactions() {
     if (key === "status") setFilterStatus("");
     if (key === "category_id") setFilterCategory("");
     if (key === "excluded") setFilterExcluded("");
+    if (key === "is_recurring") setFilterRecurring("");
     setPage(0);
   }
 
@@ -281,6 +289,7 @@ export default function Transactions() {
     }
     if (key === "status") return value;
     if (key === "excluded") return value === "only" ? "Excluded only" : value === "hide" ? "Hiding excluded" : "Including excluded";
+    if (key === "is_recurring") return value === "true" ? "Recurring only" : "Non-recurring only";
     if (key === "date_from") return `From ${new Date(value).toLocaleDateString()}`;
     if (key === "date_to") return `To ${new Date(value).toLocaleDateString()}`;
     return `${key}: ${value}`;
@@ -305,6 +314,16 @@ export default function Transactions() {
           >
             <Sparkles className="h-4 w-4" />
             {categorizeMut.isPending ? " Categorizing…" : ""}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            title="Generate categorization rules via AI (results appear on the Rules page as drafts)"
+            disabled={generateRulesMut.isPending}
+            onClick={() => generateRulesMut.mutate({})}
+          >
+            <BookOpen className="h-4 w-4" />
+            {generateRulesMut.isPending ? " Generating…" : ""}
           </Button>
           <Button
             variant="outline"
@@ -368,6 +387,20 @@ export default function Transactions() {
               : `No new transfers found (${detectResult.total_pairs} existing).`}
           </p>
           <button onClick={() => setDetectResult(null)} className="text-sky-500 hover:text-sky-700">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Rule generation result */}
+      {generateRulesMut.isSuccess && (
+        <div className="rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/30 p-2.5 mb-3 flex items-center justify-between">
+          <p className="text-sm text-emerald-800 dark:text-emerald-300">
+            {generateRulesMut.data.drafts_created > 0
+              ? `Created ${generateRulesMut.data.drafts_created} draft rule${generateRulesMut.data.drafts_created !== 1 ? "s" : ""} from ${generateRulesMut.data.transactions_covered} transactions. Review them on the Rules page.`
+              : "No new rules generated — transactions may already be covered by existing rules."}
+          </p>
+          <button onClick={() => generateRulesMut.reset()} className="text-emerald-500 hover:text-emerald-700">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -501,6 +534,15 @@ export default function Transactions() {
                             title="Excluded from budget calculations"
                           >
                             excluded
+                          </span>
+                        )}
+                        {t.is_recurring && (
+                          <span
+                            className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium bg-cyan-100 dark:bg-cyan-900/40 text-cyan-700 dark:text-cyan-300"
+                            title={`Recurring (${t.recurrence_cadence || "detected"})`}
+                          >
+                            <Repeat className="h-2.5 w-2.5" />
+                            {t.recurrence_cadence || "recurring"}
                           </span>
                         )}
                       </div>
@@ -654,6 +696,17 @@ export default function Transactions() {
               <option value="">All</option>
               <option value="hide">Hide excluded</option>
               <option value="only">Excluded only</option>
+            </Select>
+          </div>
+          <div>
+            <Label>Recurring</Label>
+            <Select
+              value={filterRecurring}
+              onChange={(e) => setFilterRecurring(e.target.value)}
+            >
+              <option value="">All</option>
+              <option value="true">Recurring only</option>
+              <option value="false">Non-recurring only</option>
             </Select>
           </div>
           <div>
@@ -1303,6 +1356,20 @@ function TransactionDetailView({
             <Eye className="h-3.5 w-3.5 mr-1" />
             Include
           </Button>
+        </div>
+      )}
+
+      {txn.is_recurring && (
+        <div className="rounded-lg border border-cyan-200 dark:border-cyan-800 bg-cyan-50 dark:bg-cyan-900/30 p-2.5 mb-3 flex items-center gap-2">
+          <Repeat className="h-4 w-4 text-cyan-600 dark:text-cyan-400 flex-shrink-0" />
+          <p className="text-sm text-cyan-800 dark:text-cyan-300">
+            Recurring transaction — {txn.recurrence_cadence || "detected"}
+            {txn.recurrence_group_id && (
+              <span className="text-xs text-cyan-600 dark:text-cyan-400 ml-1">
+                (group #{txn.recurrence_group_id})
+              </span>
+            )}
+          </p>
         </div>
       )}
 
