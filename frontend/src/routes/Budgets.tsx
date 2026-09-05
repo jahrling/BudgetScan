@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, ChevronDown, ChevronLeft, ChevronUp, DollarSign, Pencil, Pin, PinOff, Plus, Sparkles, Trash2, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowDown, ArrowUp, ChevronDown, ChevronLeft, ChevronUp, DollarSign, Pencil, Pin, PinOff, Plus, RotateCcw, Settings, Sparkles, Trash2, X } from "lucide-react";
 import { Layout } from "../components/Layout";
 import { MonthSelector } from "../components/MonthSelector";
 import { Button } from "../components/ui/button";
@@ -58,6 +58,7 @@ export default function Budgets() {
 
   const [view, setView] = useState<"plan" | "track">("track");
   const [modalOpen, setModalOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [sliderEdits, setSliderEdits] = useState<Record<number, number>>({});
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
@@ -188,6 +189,15 @@ export default function Budgets() {
         <div className="flex items-center gap-2">
           <MonthSelector month={month} onChange={setMonth} />
           <SegmentedControl value={view} onChange={setView} options={viewOptions} />
+          <BudgetSettingsMenu
+            open={settingsOpen}
+            onToggle={() => setSettingsOpen(!settingsOpen)}
+            onReset={() => {
+              if (!confirm(`Replace all budgets for ${formatMonthLabel(month)} with last month's?`)) return;
+              seedMut.mutate({ month, replace: true }, { onSuccess: () => setSettingsOpen(false) });
+            }}
+            isPending={seedMut.isPending}
+          />
         </div>
       </div>
       {view === "plan" && (
@@ -201,7 +211,7 @@ export default function Budgets() {
 
       {/* Auto-seed banner */}
       {!isLoading && budgets.length === 0 && (
-        <SeedBanner month={month} onSeed={() => seedMut.mutate(month)} isPending={seedMut.isPending} />
+        <SeedBanner month={month} onSeed={() => seedMut.mutate({ month })} isPending={seedMut.isPending} />
       )}
 
       {isLoading ? (
@@ -437,6 +447,49 @@ function SeedBanner({
       <Button size="sm" onClick={onSeed} disabled={isPending}>
         {isPending ? "Copying…" : "Copy budgets"}
       </Button>
+    </div>
+  );
+}
+
+function BudgetSettingsMenu({
+  open,
+  onToggle,
+  onReset,
+  isPending,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  onReset: () => void;
+  isPending: boolean;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) onToggle();
+    }
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, [open, onToggle]);
+
+  return (
+    <div ref={ref} className="relative">
+      <Button variant="outline" size="icon" className="h-8 w-8" onClick={onToggle}>
+        <Settings className="h-4 w-4" />
+      </Button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 w-56 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-xl z-50 overflow-hidden">
+          <button
+            onClick={onReset}
+            disabled={isPending}
+            className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
+          >
+            <RotateCcw className="h-4 w-4" />
+            {isPending ? "Resetting…" : "Reset from last month"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -1015,10 +1068,10 @@ function AutoBudgetPanel({
             className="flex items-center justify-between bg-white dark:bg-gray-800 rounded-md px-2.5 py-1.5 border border-amber-100 dark:border-amber-800/50"
           >
             <div className="min-w-0">
-              <span className="text-sm font-medium truncate block">
+              <span className="text-sm font-medium truncate block text-gray-900 dark:text-gray-100">
                 {s.category_name}
                 {s.is_income && (
-                  <span className="ml-1.5 text-[10px] font-medium text-emerald-600 bg-emerald-50 px-1 py-0.5 rounded">
+                  <span className="ml-1.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/40 px-1 py-0.5 rounded">
                     income
                   </span>
                 )}

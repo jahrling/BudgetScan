@@ -16,7 +16,7 @@ export function Layout({ children, wide }: { children: ReactNode; wide?: boolean
   const location = useLocation();
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 md:flex">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 safe-area-pt md:flex">
       {/* Desktop sidebar */}
       <nav className="hidden md:flex md:flex-col md:w-48 lg:w-56 md:fixed md:inset-y-0 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700">
         <div className="px-4 py-5">

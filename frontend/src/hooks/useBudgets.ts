@@ -117,8 +117,8 @@ export function useDeleteBudget() {
 export function useSeedMonth() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (month: string) =>
-      api.post<Budget[]>(`/budgets/seed?month=${month}`, {}),
+    mutationFn: ({ month, replace = false }: { month: string; replace?: boolean }) =>
+      api.post<Budget[]>(`/budgets/seed?month=${month}${replace ? "&replace=true" : ""}`, {}),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["budgets"] });
     },

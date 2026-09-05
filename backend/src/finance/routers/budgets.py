@@ -84,9 +84,10 @@ async def month_comparison(
 @router.post("/seed", response_model=list[BudgetRead])
 async def seed_month(
     month: str = Query(...),
+    replace: bool = Query(False),
     session: AsyncSession = Depends(get_session),
 ):
-    return await budget_service.seed_month(session, month)
+    return await budget_service.seed_month(session, month, replace=replace)
 
 
 @router.get("/{budget_id}", response_model=BudgetRead)

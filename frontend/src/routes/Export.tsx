@@ -28,9 +28,9 @@ export default function ExportPage() {
 
   return (
     <Layout>
-      <h1 className="text-2xl font-semibold mb-4">Export to Quicken</h1>
+      <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100 mb-4">Export to Quicken</h1>
 
-      <p className="text-sm text-gray-600 mb-4">
+      <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
         Import this QIF into Quicken via{" "}
         <strong>File → File Import → QIF File</strong>. Choose &ldquo;all
         accounts&rdquo; and uncheck duplicates so the new splits replace the
