@@ -8,6 +8,10 @@ from finance.models.category import Category
 from finance.models.memorized_rule import MemorizedRule
 from finance.models.transaction import Transaction
 from finance.schemas.rules import (
+    BulkActionResponse,
+    BulkActivateRequest,
+    DraftGenerationResponse,
+    MonthlyRunResponse,
     RuleCreate,
     RuleListResponse,
     RulePreviewMatch,
@@ -15,6 +19,7 @@ from finance.schemas.rules import (
     RulePreviewResponse,
     RuleReindexResponse,
     RuleResponse,
+    RuleSeedResponse,
     RuleUpdate,
 )
 from finance.services.embeddings import default_embedder
@@ -193,6 +198,105 @@ async def preview_existing_rule(
     rule = await _get_rule_or_404(session, rule_id)
     return await _preview_matches(
         session, rule.normalized_payee, rule.amount_cents
+    )
+
+
+@router.post("/generate-drafts", response_model=DraftGenerationResponse)
+async def generate_drafts(session: AsyncSession = Depends(get_session)):
+    from finance.services.draft_rule_generator import generate_draft_rules
+
+    result = await generate_draft_rules(session)
+    return DraftGenerationResponse(
+        drafts_created=result.drafts_created,
+        skipped_existing=result.skipped_existing,
+        conflicts=[
+            {"payee": c.payee, "category_ids": c.category_ids, "transaction_count": c.transaction_count}
+            for c in result.conflicts
+        ],
+    )
+
+
+@router.post("/bulk-activate", response_model=BulkActionResponse)
+async def bulk_activate(
+    body: BulkActivateRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    stmt = (
+        select(MemorizedRule)
+        .where(MemorizedRule.id.in_(body.rule_ids))
+        .where(MemorizedRule.status == "draft")
+    )
+    rules = (await session.execute(stmt)).scalars().all()
+    for rule in rules:
+        rule.status = "active"
+    await session.commit()
+    return BulkActionResponse(updated=len(rules))
+
+
+@router.post("/bulk-delete", response_model=BulkActionResponse)
+async def bulk_delete(
+    body: BulkActivateRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    stmt = (
+        select(MemorizedRule)
+        .where(MemorizedRule.id.in_(body.rule_ids))
+        .where(MemorizedRule.status == "draft")
+    )
+    rules = (await session.execute(stmt)).scalars().all()
+    for rule in rules:
+        rule.status = "inactive"
+    await session.commit()
+    return BulkActionResponse(updated=len(rules))
+
+
+@router.post("/seed", response_model=RuleSeedResponse)
+async def seed_rules(session: AsyncSession = Depends(get_session)):
+    from finance.services.seed_rules import import_seed_rules
+
+    result = await import_seed_rules(session)
+    return RuleSeedResponse(
+        created=result.created,
+        updated=result.updated,
+        skipped=result.skipped,
+        missing_categories=result.missing_categories,
+    )
+
+
+@router.post("/run-monthly", response_model=MonthlyRunResponse)
+async def run_monthly(session: AsyncSession = Depends(get_session)):
+    """Run all categorization analysis tasks in sequence."""
+    from finance.services.draft_rule_generator import generate_draft_rules
+    from finance.services.recurrence_detector import detect_recurring
+    from finance.services.seed_rules import import_seed_rules
+
+    seed_result = await import_seed_rules(session)
+    draft_result = await generate_draft_rules(session)
+    recurrence_result = await detect_recurring(session)
+    store = await rebuild_rules_index(session, default_embedder())
+
+    return MonthlyRunResponse(
+        seed=RuleSeedResponse(
+            created=seed_result.created,
+            updated=seed_result.updated,
+            skipped=seed_result.skipped,
+            missing_categories=seed_result.missing_categories,
+        ),
+        drafts=DraftGenerationResponse(
+            drafts_created=draft_result.drafts_created,
+            skipped_existing=draft_result.skipped_existing,
+            conflicts=[
+                {"payee": c.payee, "category_ids": c.category_ids, "transaction_count": c.transaction_count}
+                for c in draft_result.conflicts
+            ],
+        ),
+        recurring={
+            "groups_found": recurrence_result.groups_found,
+            "transactions_flagged": recurrence_result.transactions_flagged,
+            "transactions_cleared": recurrence_result.transactions_cleared,
+            "by_cadence": recurrence_result.by_cadence,
+        },
+        reindex=RuleReindexResponse(indexed=len(store)),
     )
 
 

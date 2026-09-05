@@ -36,6 +36,13 @@ class Transaction(Base):
     needs_review: Mapped[bool] = mapped_column(default=True)
     transfer_pair_id: Mapped[Optional[int]] = mapped_column(nullable=True, index=True)
     excluded: Mapped[Optional[bool]] = mapped_column(nullable=True, default=None)
+    is_recurring: Mapped[Optional[bool]] = mapped_column(nullable=True, default=None)
+    recurrence_cadence: Mapped[Optional[str]] = mapped_column(
+        String(16), nullable=True, default=None
+    )
+    recurrence_group_id: Mapped[Optional[int]] = mapped_column(
+        nullable=True, default=None, index=True
+    )
 
     account: Mapped["Account"] = relationship("Account", lazy="selectin")
     category: Mapped[Optional["Category"]] = relationship("Category", lazy="selectin")

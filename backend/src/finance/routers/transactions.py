@@ -45,6 +45,7 @@ async def list_transactions(
     category_id: int | None = None,
     category_ids: str | None = Query(None, description="Comma-separated category IDs (overrides category_id)"),
     excluded: str | None = Query(None, description="'only' = excluded only, 'include' = all, omit/null = hide excluded"),
+    is_recurring: bool | None = Query(None, description="Filter by recurring flag"),
     sort_by: str | None = None,
     sort_dir: str = "desc",
     sort: str | None = Query(None, description="Multi-sort: 'col1:asc,col2:desc'"),
@@ -73,6 +74,7 @@ async def list_transactions(
         category_id=category_id,
         category_ids=[int(x) for x in category_ids.split(",") if x.strip()] if category_ids else None,
         excluded=excluded,
+        is_recurring=is_recurring,
         sort_specs=sort_specs,
     )
 
@@ -624,4 +626,54 @@ async def bootstrap_categories(
             BootstrapSummaryItem(tier=t, count=c)
             for t, c in tier_counts.most_common()
         ],
+    )
+
+
+class GenerateRulesRequest(BaseModel):
+    transaction_ids: list[int] | None = None
+
+
+class GenerateRulesResponse(BaseModel):
+    drafts_created: int
+    batches_processed: int
+    transactions_covered: int
+    errors: list[str]
+
+
+@router.post("/generate-rules", response_model=GenerateRulesResponse)
+async def generate_rules(
+    body: GenerateRulesRequest | None = None,
+    session: AsyncSession = Depends(get_session),
+):
+    from finance.services.batch_rule_generator import generate_rules_from_batch
+
+    txn_ids = body.transaction_ids if body else None
+    result = await generate_rules_from_batch(session, transaction_ids=txn_ids)
+    return GenerateRulesResponse(
+        drafts_created=result.drafts_created,
+        batches_processed=result.batches_processed,
+        transactions_covered=result.transactions_covered,
+        errors=result.errors,
+    )
+
+
+class DetectRecurringResponse(BaseModel):
+    groups_found: int
+    transactions_flagged: int
+    transactions_cleared: int
+    by_cadence: dict[str, int]
+
+
+@router.post("/detect-recurring", response_model=DetectRecurringResponse)
+async def detect_recurring_transactions(
+    session: AsyncSession = Depends(get_session),
+):
+    from finance.services.recurrence_detector import detect_recurring
+
+    result = await detect_recurring(session)
+    return DetectRecurringResponse(
+        groups_found=result.groups_found,
+        transactions_flagged=result.transactions_flagged,
+        transactions_cleared=result.transactions_cleared,
+        by_cadence=result.by_cadence,
     )

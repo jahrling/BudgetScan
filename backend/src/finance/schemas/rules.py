@@ -62,3 +62,37 @@ class RulePreviewResponse(BaseModel):
 
 class RuleReindexResponse(BaseModel):
     indexed: int
+
+
+class RuleSeedResponse(BaseModel):
+    created: int
+    updated: int
+    skipped: int
+    missing_categories: list[str] | None = None
+
+
+class DraftConflict(BaseModel):
+    payee: str
+    category_ids: list[int]
+    transaction_count: int
+
+
+class DraftGenerationResponse(BaseModel):
+    drafts_created: int
+    skipped_existing: int
+    conflicts: list[DraftConflict]
+
+
+class BulkActivateRequest(BaseModel):
+    rule_ids: list[int]
+
+
+class BulkActionResponse(BaseModel):
+    updated: int
+
+
+class MonthlyRunResponse(BaseModel):
+    seed: RuleSeedResponse
+    drafts: DraftGenerationResponse
+    recurring: dict
+    reindex: RuleReindexResponse
