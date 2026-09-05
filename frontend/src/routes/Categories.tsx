@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import {
   Brain,
-  ChevronDown,
   ChevronRight,
   Database,
   Download,
@@ -14,7 +13,6 @@ import {
   Sparkles,
   Trash2,
   Wrench,
-  X,
 } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
 import { Layout } from "../components/Layout";
