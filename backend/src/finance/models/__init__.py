@@ -9,6 +9,11 @@ from finance.models.line_item import LineItem
 from finance.models.receipt import Receipt
 from finance.models.annotation import Annotation
 from finance.models.memorized_rule import MemorizedRule
+from finance.models.security import PriceHistory, Security
+from finance.models.investment_transaction import InvestmentTransaction
+from finance.models.position_snapshot import PositionSnapshot
+from finance.models.lot import Lot, LotDisposal
+from finance.models.investment_settings import InvestmentSettings
 
 __all__ = [
     "Base",
@@ -22,4 +27,11 @@ __all__ = [
     "Receipt",
     "Annotation",
     "MemorizedRule",
+    "Security",
+    "PriceHistory",
+    "InvestmentTransaction",
+    "PositionSnapshot",
+    "Lot",
+    "LotDisposal",
+    "InvestmentSettings",
 ]
