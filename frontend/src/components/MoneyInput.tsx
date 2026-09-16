@@ -54,3 +54,31 @@ MoneyInput.displayName = "MoneyInput";
 export function formatCents(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
+
+const MICROS = 1_000_000;
+
+export function formatShares(micros: number): string {
+  if (micros % MICROS === 0) return (micros / MICROS).toFixed(0);
+  if (micros % 10_000 === 0) return (micros / MICROS).toFixed(2);
+  return (micros / MICROS).toFixed(4);
+}
+
+export function formatPrice(micros: number): string {
+  return `$${(micros / MICROS).toFixed(2)}`;
+}
+
+export function formatPct(decimal: number): string {
+  return `${(decimal * 100).toFixed(2)}%`;
+}
+
+export function formatGainCents(cents: number): string {
+  const sign = cents > 0 ? "+" : cents < 0 ? "-" : "";
+  return `${sign}${formatCents(Math.abs(cents))}`;
+}
+
+export function formatCentsCompact(cents: number): string {
+  const abs = Math.abs(cents);
+  const sign = cents < 0 ? "-" : "";
+  if (abs >= 10_000_000) return `${sign}$${(abs / 100_000).toFixed(0)}K`;
+  return `${sign}$${(abs / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}

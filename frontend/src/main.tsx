@@ -19,6 +19,7 @@ const Login = lazy(() => import('./routes/Login'))
 const Docs = lazy(() => import('./routes/Docs'))
 const QuickenSync = lazy(() => import('./routes/QuickenSync'))
 const Rules = lazy(() => import('./routes/Rules'))
+const Investments = lazy(() => import('./routes/Investments'))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -119,6 +120,14 @@ function App() {
             element={
               <AuthGuard>
                 <Rules />
+              </AuthGuard>
+            }
+          />
+          <Route
+            path="/investments"
+            element={
+              <AuthGuard>
+                <Investments />
               </AuthGuard>
             }
           />

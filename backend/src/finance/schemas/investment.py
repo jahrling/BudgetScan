@@ -262,3 +262,83 @@ class InvestmentSettingsUpdate(BaseModel):
         if v is not None and not -10_000 <= v <= 100_000:
             raise ValueError("risk_free_annual_bps out of range")
         return v
+
+
+# ── Aggregate response schemas (Phase 4) ──────────────────────────────────
+
+
+class HoldingSummaryRead(BaseModel):
+    security_id: int
+    security_name: str
+    symbol: str | None
+    security_type: str
+    account_id: int
+    account_name: str
+    account_type: str
+    quantity_micros: int
+    latest_price_micros: int | None
+    latest_price_date: date | None
+    market_value_cents: int | None
+    cost_basis_cents: int
+    invested_capital_cents: int
+    unrealized_gain_cents: int | None
+    income_cents: int
+    realized_gain_cents: int
+
+
+class AccountSummaryRead(BaseModel):
+    id: int
+    name: str
+    type: str
+    value_cents: int | None
+    invested_capital_cents: int
+    cost_basis_cents: int
+    gain_cents: int | None
+    income_cents: int
+    holdings_count: int
+
+
+class OverviewRead(BaseModel):
+    total_value_cents: int | None
+    invested_capital_cents: int
+    cost_basis_cents: int
+    total_gain_cents: int | None
+    income_cents: int
+    realized_gain_cents: int
+    accounts: list[AccountSummaryRead]
+    holdings_count: int
+
+
+class LotDetailRead(BaseModel):
+    id: int
+    account_id: int
+    security_id: int
+    opened_at: date
+    opened_by_txn_id: int | None
+    quantity_micros_original: int
+    quantity_micros_remaining: int
+    cost_basis_cents: int
+    is_reinvestment: bool
+    source: str
+    disposals: list[LotDisposalRead]
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class HoldingDetailRead(BaseModel):
+    security: SecurityRead
+    account_id: int | None
+    account_name: str | None
+    quantity_micros: int
+    latest_price_micros: int | None
+    latest_price_date: date | None
+    market_value_cents: int | None
+    cost_basis_cents: int
+    invested_capital_cents: int
+    unrealized_gain_cents: int | None
+    income_cents: int
+    realized_gain_cents: int
+    lots: list[LotDetailRead]
+    transactions: list[InvestmentTransactionRead]
