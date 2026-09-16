@@ -60,7 +60,9 @@ QIF_ACTION_MAP: dict[str, str | None] = {
     "xout": "cash_out",
     "contribx": "cash_in",
     "withdrwx": "cash_out",
-    "cash": "cash_in",
+    # Cash is direction- and context-dependent: sign of T, plus L (category
+    # => income/fee) or Y (money-market sweep => cash movement, not a holding).
+    "cash": "cash_in | cash_out | interest (by sign + L/Y)",
     "stksplit": "split",
     "rtrncap": "return_of_capital",
     "rtrncapx": "return_of_capital",

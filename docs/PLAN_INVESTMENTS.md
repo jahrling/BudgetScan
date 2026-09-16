@@ -1,6 +1,6 @@
 # BudgetScan — Investments Section: Build Plan
 
-**Status:** Phase 0 in progress (blocked on one Quicken export) · **Date:** 2026-09-09 · **Runs in:** Claude Opus, interactive
+**Status:** Phase 0 complete; ready for Phase 1 · **Date:** 2026-09-09 · **Runs in:** Claude Opus, interactive
 **Author:** drafted by Claude Fable 5.1 from Conrad's brief; reviewed by Conrad before execution.
 
 This plan adds a separate **Investments** domain to BudgetScan. It answers three
@@ -435,8 +435,65 @@ ticker), 3 price rows, 1 unknown action, 1 out-of-scope action — all correctly
 classified, while the `import_qif` summary in the same run showed
 `Transactions: 0 / Parse errors: 0`.
 
-### 9.5 Still open — gates Phase 1
+### 9.5 Export results (2026-09-15) — Q2 and Q6 answered
 
-- **Q2/Q6 — the export itself.** Blocking. Everything above is decided; Phase 1 can
-  begin on the model layer, but Phase 3's scope (parse-only vs. build manual entry
-  first) depends on what the inspector reports.
+Conrad exported one brokerage account. Inspector summary (no amounts recorded here):
+
+| | |
+|---|---|
+| `!Type:Invst` records | 238 |
+| Date range | 2023-08-30 to 2026-09-04 (37 months) |
+| Distinct securities | 16, referenced by name only |
+| `!Type:Security` / `!Type:Prices` | 0 / 0 |
+| `!Account` header | none |
+| Unknown action codes | none |
+
+Action mix: Div 63, ReinvDiv 62, Cash 58, Buy 31, Sell 12, ShrsIn 8, ShrsOut 2,
+XOut 1, StkSplit 1.
+
+**F8 — Quicken holds full transaction-level detail.** Q2 is a yes. The QIF path is
+the import route; Phase 3 is parsing, not manual entry. §4.1 manual snapshots still
+get built, but as the valuation source (see F11), not the transaction source.
+
+**F9 — 37 months of history** clears the 24-month bar for beta and alpha (Q6).
+
+**F10 — Half of all dividends are reinvested** (62 ReinvDiv against 63 Div). This is
+the concrete source of the allocation-vs-growth confusion the whole section exists
+to resolve; §3.1's `invested_capital_cents` vs `cost_basis_cents` split is the
+right cut. 8 `ShrsIn` records are transferred-in positions with no purchase history
+in this file, which is exactly the case D5's statement-lot override exists for.
+
+**F11 — No security list, no price history, no account header.** Every security is
+identified only by a broker-feed display name; there are no tickers. The 105
+transaction-date prices are sparse points, not a valuation series. Consequences:
+
+- Re-export with **Security Lists** and **Account List** checked to get `!Type:Security`
+  (name → ticker) and the `!Account` header. If Quicken cannot emit `!Type:Prices`
+  (the checkbox may not exist in current versions), that is fine.
+- Month-end valuations must then come from one of: manual statement snapshots
+  (§4.1), or the opt-in price fetcher (D7) once tickers are known. All 16 holdings
+  are exchange-traded, so the fetcher is the low-effort route; per-ticker CSV
+  upload for 16 symbols is not. Conrad decides whether to enable it.
+- Until an `!Account` header is present, the import UI must let the user pick the
+  target account.
+
+**F12 — `Cash` is not one action.** 58 records split three ways: 38 carry
+`LInterest Inc` (interest income, positive), 13 reference a money-market sweep
+pseudo-security (`Y` set, cash movement between sweep and settlement, not a
+holding), 4 have an amount and nothing else, and 3 have no amount at all. Phase 3
+must map `Cash` by sign plus `L`/`Y`, treat the sweep security as cash-equivalent
+rather than a position, and skip amount-less records with a warning. The inspector's
+label for `Cash` now says so.
+
+**F13 — Bond-heavy ETF mix.** Several of the largest-by-activity holdings are bond
+ETFs. Beta against the S&P will be near zero for them, which is correct but not
+useful. Promote per-holding benchmark override from §7 (out of scope) to a v1.5
+item, and show portfolio-level beta prominently since that is the number that
+answers "how risky is this, really".
+
+### 9.6 Still open — gates Phase 3 only
+
+- **Re-export with Security Lists + Account List checked** (F11). Phase 1 and 2 do
+  not depend on it; Phase 3 does.
+- **Enable the price fetcher, or plan on entering monthly statement values?** (F11).
+  Affects Phase 5 only.
