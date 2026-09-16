@@ -187,6 +187,8 @@ def _content_hash(
     security_name: str | None,
     quantity_micros: int | None,
     amount_cents: int,
+    fee_cents: int = 0,
+    seq: int = 0,
 ) -> str:
     parts = [
         trade_date.isoformat(),
@@ -194,6 +196,8 @@ def _content_hash(
         security_name or "",
         str(quantity_micros or 0),
         str(amount_cents),
+        str(fee_cents),
+        str(seq),
     ]
     return hashlib.sha256("|".join(parts).encode()).hexdigest()[:32]
 
@@ -245,6 +249,7 @@ def parse_investment_qif(text: str) -> InvestmentParseResult:
     current_account_key: str = ""
     section_kind: str | None = None
     record: dict[str, str] = {}
+    invst_seq: int = 0
 
     for raw_line in StringIO(text):
         line = raw_line.rstrip("\r\n")
@@ -275,8 +280,9 @@ def parse_investment_qif(text: str) -> InvestmentParseResult:
                 current_account_key = acct_name
             elif section_kind == "invst":
                 _flush_invst_record(
-                    record, current_account_key, result,
+                    record, current_account_key, result, invst_seq,
                 )
+                invst_seq += 1
             elif section_kind == "security_def":
                 _flush_security_record(record, result)
             record = {}
@@ -292,10 +298,7 @@ def parse_investment_qif(text: str) -> InvestmentParseResult:
         if section_kind == "account":
             record[code] = value
         elif section_kind == "invst":
-            if code in record and code in ("S", "E", "$"):
-                record[code] = value
-            else:
-                record[code] = value
+            record[code] = value
         elif section_kind == "security_def":
             record[code] = value
 
@@ -306,6 +309,7 @@ def _flush_invst_record(
     record: dict[str, str],
     account_key: str,
     result: InvestmentParseResult,
+    seq: int = 0,
 ) -> None:
     """Process one ^-terminated investment transaction record."""
     raw_action = record.get("N", "").strip()
@@ -425,6 +429,7 @@ def _flush_invst_record(
     # Generate content hash for dedup (QIF has no FITIDs)
     external_id = _content_hash(
         trade_date, action, security_name, quantity_micros, amount_cents,
+        fee_cents=fee_cents, seq=seq,
     )
 
     # For memo, also capture the L field info if it has category info
@@ -549,12 +554,8 @@ def parse_price_csv(text: str, security_name: str) -> PriceCSVResult:
         try:
             price_date = _parse_qif_date(raw_date)
         except ValueError:
-            from datetime import datetime
-            try:
-                price_date = datetime.strptime(raw_date, "%Y-%m-%d").date()
-            except ValueError:
-                result.errors.append(f"Line {line_num}: bad date {raw_date!r}")
-                continue
+            result.errors.append(f"Line {line_num}: bad date {raw_date!r}")
+            continue
 
         try:
             price_micros = _parse_micros(raw_close)

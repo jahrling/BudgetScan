@@ -39,6 +39,8 @@ from finance.services.investment_import import (
 )
 from finance.services.lot_engine import TxnInput, rebuild_lots
 
+_MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+
 router = APIRouter(
     prefix="/api/investments",
     tags=["investments"],
@@ -231,15 +233,17 @@ async def rebuild_lots_endpoint(
 
     total_lots = 0
     total_disposals = 0
+    holdings_processed = 0
 
     for acct_id, sec_id in pairs:
         if (acct_id, sec_id) in statement_pairs:
             continue
 
-        # Exclude cash-equivalent securities
         security = await session.get(Security, sec_id)
         if security and security.is_cash_equivalent:
             continue
+
+        holdings_processed += 1
 
         txns_result = await session.execute(
             select(InvestmentTransaction)
@@ -266,7 +270,7 @@ async def rebuild_lots_endpoint(
 
         lot_result = rebuild_lots(inputs)
 
-        for lr in lot_result.lots:
+        for i, lr in enumerate(lot_result.lots):
             lot = Lot(
                 account_id=acct_id,
                 security_id=sec_id,
@@ -282,7 +286,7 @@ async def rebuild_lots_endpoint(
             await session.flush()
 
             for dr in lot_result.disposals:
-                if dr.lot_index == lot_result.lots.index(lr):
+                if dr.lot_index == i:
                     disposal = LotDisposal(
                         lot_id=lot.id,
                         sell_txn_id=dr.sell_txn_id,
@@ -300,7 +304,7 @@ async def rebuild_lots_endpoint(
     await session.commit()
 
     return LotRebuildResponse(
-        holdings_processed=len(pairs) - len(statement_pairs),
+        holdings_processed=holdings_processed,
         lots_created=total_lots,
         disposals_created=total_disposals,
     )
@@ -333,7 +337,10 @@ async def upload_prices(
     if security is None:
         raise HTTPException(404, "Security not found")
 
-    content = (await file.read()).decode("utf-8", errors="replace")
+    raw = await file.read(_MAX_UPLOAD_BYTES + 1)
+    if len(raw) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(413, "File too large (10 MB limit)")
+    content = raw.decode("utf-8", errors="replace")
     csv_result = parse_price_csv(content, security.name)
 
     if csv_result.errors:
@@ -389,7 +396,10 @@ async def import_investment_qif(
     if account is None:
         raise HTTPException(404, "Account not found")
 
-    content = (await file.read()).decode("cp1252", errors="replace")
+    raw = await file.read(_MAX_UPLOAD_BYTES + 1)
+    if len(raw) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(413, "File too large (10 MB limit)")
+    content = raw.decode("cp1252", errors="replace")
     parsed: InvestmentParseResult = parse_investment_qif(content)
 
     # 1. Create/resolve securities by name

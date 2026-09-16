@@ -97,6 +97,16 @@ class TestContentHash:
         assert len(h) == 32
         assert all(c in "0123456789abcdef" for c in h)
 
+    def test_seq_differentiates_same_day_dupes(self):
+        h1 = _content_hash(date(2024, 1, 1), "buy", "AAPL", 100_000_000, -500000, seq=0)
+        h2 = _content_hash(date(2024, 1, 1), "buy", "AAPL", 100_000_000, -500000, seq=1)
+        assert h1 != h2
+
+    def test_fee_differentiates(self):
+        h1 = _content_hash(date(2024, 1, 1), "buy", "AAPL", 100, -500, fee_cents=0)
+        h2 = _content_hash(date(2024, 1, 1), "buy", "AAPL", 100, -500, fee_cents=1000)
+        assert h1 != h2
+
 
 # ---------------------------------------------------------------------------
 # QIF investment parsing — synthetic fixture
