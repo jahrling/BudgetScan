@@ -1,8 +1,10 @@
-import { useState } from "react";
-import { ChevronLeft } from "lucide-react";
+import { useCallback, useRef, useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { ChevronDown, ChevronLeft, ChevronUp, Upload } from "lucide-react";
 import { Layout } from "../components/Layout";
 import { SegmentedControl } from "../components/ui/segmented-control";
 import { Button } from "../components/ui/button";
+import { Select } from "../components/ui/select";
 import {
   formatCents,
   formatGainCents,
@@ -15,6 +17,7 @@ import {
   useHoldings,
   useHoldingDetail,
 } from "../hooks/useInvestments";
+import { useAccounts } from "../hooks/useAccounts";
 import type {
   AccountSummary,
   HoldingDetailResponse,
@@ -696,6 +699,278 @@ function ActionBadge({ action }: { action: string }) {
   );
 }
 
+// ── Import section ──────────────────────────────────────────────────────
+
+const INVESTMENT_ACCOUNT_TYPES = new Set([
+  "brokerage", "ira", "roth_ira", "401k", "529", "hsa",
+]);
+
+interface QIFImportResult {
+  transactions_imported: number;
+  securities_created: number;
+  prices_imported: number;
+  skipped_duplicate: number;
+  skipped_other: number;
+  skipped_banking: number;
+  errors: string[];
+}
+
+interface LotRebuildResult {
+  holdings_processed: number;
+  lots_created: number;
+  disposals_created: number;
+}
+
+function ImportSection() {
+  const qc = useQueryClient();
+  const { data: allAccounts = [] } = useAccounts();
+  const investmentAccounts = allAccounts.filter(
+    (a) => INVESTMENT_ACCOUNT_TYPES.has(a.type),
+  );
+
+  const [accountId, setAccountId] = useState<number | "">("");
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [importResult, setImportResult] = useState<QIFImportResult | null>(null);
+  const [rebuildResult, setRebuildResult] = useState<LotRebuildResult | null>(null);
+  const [expanded, setExpanded] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const uploadMut = useMutation({
+    mutationFn: async (file: File) => {
+      if (!accountId) throw new Error("Select an account first");
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch(
+        `/api/investments/import/qif?account_id=${accountId}`,
+        { method: "POST", credentials: "include", body: form },
+      );
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`HTTP ${res.status}: ${text}`);
+      }
+      return (await res.json()) as QIFImportResult;
+    },
+    onSuccess: (data) => {
+      setImportResult(data);
+      setRebuildResult(null);
+    },
+  });
+
+  const rebuildMut = useMutation({
+    mutationFn: async () => {
+      const params = accountId ? `?account_id=${accountId}` : "";
+      const res = await fetch(`/api/investments/lots/rebuild${params}`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return (await res.json()) as LotRebuildResult;
+    },
+    onSuccess: (data) => {
+      setRebuildResult(data);
+      qc.invalidateQueries({ queryKey: ["investments"] });
+    },
+  });
+
+  const handleFile = useCallback(
+    (file: File) => {
+      if (!file.name.toLowerCase().endsWith(".qif")) {
+        alert("Only QIF files are supported.");
+        return;
+      }
+      setFileName(file.name);
+      setImportResult(null);
+      setRebuildResult(null);
+      uploadMut.mutate(file);
+    },
+    [uploadMut.mutate],
+  );
+
+  function onPick(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    if (f) handleFile(f);
+    e.target.value = "";
+  }
+
+  return (
+    <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold text-gray-900 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+      >
+        <span>Import QIF</span>
+        {expanded ? (
+          <ChevronUp className="h-4 w-4 text-gray-400" />
+        ) : (
+          <ChevronDown className="h-4 w-4 text-gray-400" />
+        )}
+      </button>
+
+      {expanded && (
+        <div className="px-4 pb-4 space-y-3 border-t border-gray-100 dark:border-gray-700 pt-3">
+          {/* Account picker */}
+          <div>
+            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+              Target account
+            </label>
+            <Select
+              value={String(accountId)}
+              onChange={(e) => setAccountId(e.target.value ? Number(e.target.value) : "")}
+            >
+              <option value="" disabled>
+                Select an investment account…
+              </option>
+              {investmentAccounts.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name} ({a.type})
+                </option>
+              ))}
+            </Select>
+            {investmentAccounts.length === 0 && (
+              <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                No investment accounts found. Create one first (brokerage, IRA, 401k, etc.).
+              </p>
+            )}
+          </div>
+
+          {/* Drop zone */}
+          <div
+            onClick={() => accountId && fileInputRef.current?.click()}
+            onDrop={(e) => {
+              e.preventDefault();
+              if (!accountId || uploadMut.isPending) return;
+              const f = e.dataTransfer.files[0];
+              if (f) handleFile(f);
+            }}
+            onDragOver={(e) => e.preventDefault()}
+            className={cn(
+              "flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-5 text-center transition-colors",
+              accountId
+                ? "border-gray-300 dark:border-gray-600 hover:border-sky-400 cursor-pointer"
+                : "border-gray-200 dark:border-gray-700 opacity-50 cursor-not-allowed",
+            )}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".qif"
+              onChange={onPick}
+              className="hidden"
+              disabled={!accountId || uploadMut.isPending}
+            />
+            {uploadMut.isPending ? (
+              <>
+                <span className="inline-block h-3 w-3 rounded-sm bg-sky-500 mb-2 animate-pulse" />
+                <p className="text-sm text-gray-500">
+                  Parsing{fileName ? ` ${fileName}` : ""}…
+                </p>
+              </>
+            ) : (
+              <>
+                <Upload className="h-6 w-6 mb-1.5 text-gray-400" />
+                <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                  Drop a QIF file or click to browse
+                </p>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                  Investment transactions only
+                </p>
+              </>
+            )}
+          </div>
+
+          {/* Upload error */}
+          {uploadMut.isError && (
+            <div className="rounded-lg border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-900/30 p-3 text-sm text-red-800 dark:text-red-300">
+              {uploadMut.error instanceof Error
+                ? uploadMut.error.message
+                : String(uploadMut.error)}
+            </div>
+          )}
+
+          {/* Import result */}
+          {importResult && (
+            <div className="space-y-2">
+              <div className="rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/30 p-3 text-sm">
+                <p className="font-medium text-emerald-800 dark:text-emerald-300">
+                  Import complete
+                </p>
+                <div className="text-xs text-emerald-700 dark:text-emerald-400 mt-1 space-y-0.5">
+                  <p>{importResult.transactions_imported} transactions imported</p>
+                  {importResult.securities_created > 0 && (
+                    <p>{importResult.securities_created} securities created</p>
+                  )}
+                  {importResult.prices_imported > 0 && (
+                    <p>{importResult.prices_imported} prices imported</p>
+                  )}
+                  {importResult.skipped_duplicate > 0 && (
+                    <p>{importResult.skipped_duplicate} duplicates skipped</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Banking transactions warning */}
+              {importResult.skipped_banking > 0 && (
+                <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/30 p-3 text-sm">
+                  <p className="font-medium text-amber-800 dark:text-amber-300">
+                    {importResult.skipped_banking} standard transaction{importResult.skipped_banking === 1 ? "" : "s"} skipped
+                  </p>
+                  <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">
+                    This file contains banking transactions (checking, credit card, etc.)
+                    that are not handled here. Use the Sync page to import those.
+                  </p>
+                </div>
+              )}
+
+              {/* Import errors */}
+              {importResult.errors.length > 0 && (
+                <div className="rounded-lg border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-900/30 p-3 text-sm text-red-800 dark:text-red-300">
+                  <p className="font-semibold mb-1">Warnings:</p>
+                  <ul className="list-disc pl-4 text-xs">
+                    {importResult.errors.map((e, i) => (
+                      <li key={i}>{e}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Rebuild lots button */}
+              {!rebuildResult && (
+                <Button
+                  onClick={() => rebuildMut.mutate()}
+                  disabled={rebuildMut.isPending || importResult.transactions_imported === 0}
+                  className="w-full"
+                >
+                  {rebuildMut.isPending ? "Rebuilding lots…" : "Rebuild lots"}
+                </Button>
+              )}
+
+              {rebuildMut.isError && (
+                <div className="rounded-lg border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-900/30 p-3 text-sm text-red-800 dark:text-red-300">
+                  Lot rebuild failed: {String(rebuildMut.error)}
+                </div>
+              )}
+
+              {rebuildResult && (
+                <div className="rounded-lg border border-sky-200 dark:border-sky-800 bg-sky-50 dark:bg-sky-900/30 p-3 text-sm">
+                  <p className="font-medium text-sky-800 dark:text-sky-300">
+                    Lots rebuilt
+                  </p>
+                  <p className="text-xs text-sky-700 dark:text-sky-400 mt-1">
+                    {rebuildResult.holdings_processed} holdings processed,{" "}
+                    {rebuildResult.lots_created} lots created,{" "}
+                    {rebuildResult.disposals_created} disposals recorded.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main component ───────────────────────────────────────────────────────
 
 export default function Investments() {
@@ -728,6 +1003,8 @@ export default function Investments() {
             options={viewOptions}
           />
         </div>
+
+        <ImportSection />
 
         {view === "overview" ? (
           <OverviewView />

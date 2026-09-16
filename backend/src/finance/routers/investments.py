@@ -503,6 +503,7 @@ class QIFImportResponse(BaseModel):
     prices_imported: int
     skipped_duplicate: int
     skipped_other: int
+    skipped_banking: int
     errors: list[str]
 
 
@@ -624,6 +625,7 @@ async def import_investment_qif(
         prices_imported=prices_imported,
         skipped_duplicate=skipped_duplicate,
         skipped_other=parsed.skipped_count,
+        skipped_banking=parsed.skipped_banking_count,
         errors=parsed.errors,
     )
 
