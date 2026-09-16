@@ -9,6 +9,7 @@ from finance.models.category import Category
 from finance.models.line_item import LineItem
 from finance.models.transaction import Transaction
 from finance.schemas.budget import BudgetCreate, BudgetUpdate
+from finance.services.account import excludes_investment_accounts
 from finance.services.period_utils import parse_month_param, prev_month_str
 
 
@@ -141,6 +142,7 @@ async def get_budget_status(
             Transaction.posted_at >= period_start,
             Transaction.posted_at <= period_end,
             Transaction.excluded.is_(None),
+            excludes_investment_accounts(),
         )
         .group_by(LineItem.category_id)
     )
@@ -207,6 +209,7 @@ async def get_spending_suggestions(
             Transaction.posted_at >= start,
             Transaction.posted_at <= end,
             Transaction.excluded.is_(None),
+            excludes_investment_accounts(),
         )
         .group_by(LineItem.category_id)
     )
@@ -262,6 +265,7 @@ async def get_income_summary(
             Transaction.posted_at >= period_start,
             Transaction.posted_at <= period_end,
             Transaction.excluded.is_(None),
+            excludes_investment_accounts(),
         )
         .group_by(LineItem.category_id)
     )
@@ -319,6 +323,7 @@ async def get_unbudgeted_spend(
                 Transaction.posted_at >= period_start,
                 Transaction.posted_at <= period_end,
                 Transaction.excluded.is_(None),
+                excludes_investment_accounts(),
             )
             .group_by(LineItem.category_id)
         )
@@ -334,6 +339,7 @@ async def get_unbudgeted_spend(
                 Transaction.posted_at >= period_start,
                 Transaction.posted_at <= period_end,
                 Transaction.excluded.is_(None),
+                excludes_investment_accounts(),
             )
             .group_by(LineItem.category_id)
         )
@@ -366,6 +372,7 @@ async def get_unbudgeted_spend(
             Transaction.posted_at >= period_start,
             Transaction.posted_at <= period_end,
             Transaction.excluded.is_(None),
+            excludes_investment_accounts(),
             ~sa_exists(
                 select(LineItem.id).where(LineItem.transaction_id == Transaction.id)
             ),
@@ -444,6 +451,7 @@ async def get_month_comparison(
                 Transaction.posted_at >= start,
                 Transaction.posted_at <= end,
                 Transaction.excluded.is_(None),
+                excludes_investment_accounts(),
             )
             .group_by(LineItem.category_id)
         )

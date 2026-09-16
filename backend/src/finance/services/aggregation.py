@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from finance.models.category import Category
 from finance.models.line_item import LineItem
 from finance.models.transaction import Transaction
+from finance.services.account import excludes_investment_accounts
 
 
 @dataclass
@@ -86,6 +87,7 @@ async def total_spend(
         .select_from(LineItem)
         .join(Transaction, Transaction.id == LineItem.transaction_id)
         .where(Transaction.excluded.is_(None))
+        .where(excludes_investment_accounts())
     )
     if category_ids is not None:
         if not category_ids:
@@ -127,6 +129,7 @@ async def spend_by_category(
         .join(Transaction, Transaction.id == LineItem.transaction_id)
         .join(Category, Category.id == LineItem.category_id)
         .where(Transaction.excluded.is_(None))
+        .where(excludes_investment_accounts())
         .group_by(Category.id, Category.name)
     )
     stmt = _apply_date_filter(stmt, date_from=date_from, date_to=date_to)
