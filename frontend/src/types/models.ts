@@ -238,3 +238,130 @@ export interface ReviewTransactionRequest {
   total_cents: number;
   items: ReviewLineItem[];
 }
+
+// ── Investment domain ─────────────────────────────────────────────────────
+
+export interface Security {
+  id: number;
+  name: string;
+  symbol: string | null;
+  cusip: string | null;
+  security_type: string;
+  is_cash_equivalent: boolean;
+  benchmark_security_id: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InvestmentTransaction {
+  id: number;
+  account_id: number;
+  security_id: number | null;
+  action: string;
+  trade_date: string;
+  settle_date: string | null;
+  quantity_micros: number | null;
+  price_micros: number | null;
+  amount_cents: number;
+  fee_cents: number;
+  source: string;
+  external_id: string | null;
+  linked_transaction_id: number | null;
+  memo: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LotDisposal {
+  id: number;
+  lot_id: number;
+  sell_txn_id: number;
+  quantity_micros: number;
+  proceeds_cents: number;
+  basis_cents: number;
+  realized_gain_cents: number;
+  term: string;
+}
+
+export interface LotDetail {
+  id: number;
+  account_id: number;
+  security_id: number;
+  opened_at: string;
+  opened_by_txn_id: number | null;
+  quantity_micros_original: number;
+  quantity_micros_remaining: number;
+  cost_basis_cents: number;
+  is_reinvestment: boolean;
+  source: string;
+  disposals: LotDisposal[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HoldingSummary {
+  security_id: number;
+  security_name: string;
+  symbol: string | null;
+  security_type: string;
+  account_id: number;
+  account_name: string;
+  account_type: string;
+  quantity_micros: number;
+  latest_price_micros: number | null;
+  latest_price_date: string | null;
+  market_value_cents: number | null;
+  cost_basis_cents: number;
+  invested_capital_cents: number;
+  unrealized_gain_cents: number | null;
+  income_cents: number;
+  realized_gain_cents: number;
+}
+
+export interface AccountSummary {
+  id: number;
+  name: string;
+  type: string;
+  value_cents: number | null;
+  invested_capital_cents: number;
+  cost_basis_cents: number;
+  gain_cents: number | null;
+  income_cents: number;
+  holdings_count: number;
+}
+
+export interface InvestmentOverview {
+  total_value_cents: number | null;
+  invested_capital_cents: number;
+  cost_basis_cents: number;
+  total_gain_cents: number | null;
+  income_cents: number;
+  realized_gain_cents: number;
+  accounts: AccountSummary[];
+  holdings_count: number;
+}
+
+export interface HoldingDetailResponse {
+  security: Security;
+  account_id: number | null;
+  account_name: string | null;
+  quantity_micros: number;
+  latest_price_micros: number | null;
+  latest_price_date: string | null;
+  market_value_cents: number | null;
+  cost_basis_cents: number;
+  invested_capital_cents: number;
+  unrealized_gain_cents: number | null;
+  income_cents: number;
+  realized_gain_cents: number;
+  lots: LotDetail[];
+  transactions: InvestmentTransaction[];
+}
+
+export interface InvestmentSettings {
+  id: number;
+  benchmark_security_id: number | null;
+  risk_free_annual_bps: number;
+  default_lot_method: string;
+  price_fetch_enabled: boolean;
+}

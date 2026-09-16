@@ -1,16 +1,17 @@
 import { type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "../lib/utils";
-import { Home, Tags, Wallet, Receipt, ArrowLeftRight, FileText, BookOpen } from "lucide-react";
+import { Home, Tags, Wallet, Receipt, ArrowLeftRight, FileText, BookOpen, TrendingUp } from "lucide-react";
 
 const navItems = [
-  { to: "/", label: "Home", icon: Home },
-  { to: "/transactions", label: "Txns", icon: Receipt },
-  { to: "/categories", label: "Categories", icon: Tags },
-  { to: "/budgets", label: "Budgets", icon: Wallet },
-  { to: "/rules", label: "Rules", icon: BookOpen },
-  { to: "/sync", label: "Sync", icon: ArrowLeftRight },
-  { to: "/docs", label: "Docs", icon: FileText },
+  { to: "/", label: "Home", icon: Home, mobile: true },
+  { to: "/transactions", label: "Txns", icon: Receipt, mobile: true },
+  { to: "/categories", label: "Categories", icon: Tags, mobile: true },
+  { to: "/budgets", label: "Budgets", icon: Wallet, mobile: true },
+  { to: "/investments", label: "Invest", icon: TrendingUp, mobile: true },
+  { to: "/rules", label: "Rules", icon: BookOpen, mobile: true },
+  { to: "/sync", label: "Sync", icon: ArrowLeftRight, mobile: true },
+  { to: "/docs", label: "Docs", icon: FileText, mobile: false },
 ] as const;
 
 export function Layout({ children, wide }: { children: ReactNode; wide?: boolean }) {
@@ -54,10 +55,10 @@ export function Layout({ children, wide }: { children: ReactNode; wide?: boolean
         {children}
       </main>
 
-      {/* Mobile bottom tab bar */}
+      {/* Mobile bottom tab bar — Docs hidden to keep tap targets ≥44px at 375px */}
       <nav className="fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 safe-area-pb md:hidden">
         <div className="mx-auto max-w-lg flex justify-around">
-          {navItems.map(({ to, label, icon: Icon }) => {
+          {navItems.filter(i => i.mobile).map(({ to, label, icon: Icon }) => {
             const active =
               to === "/" ? location.pathname === "/" : location.pathname.startsWith(to);
             return (
@@ -65,7 +66,7 @@ export function Layout({ children, wide }: { children: ReactNode; wide?: boolean
                 key={to}
                 to={to}
                 className={cn(
-                  "flex flex-col items-center py-2 px-3 text-xs transition-colors",
+                  "flex flex-col items-center py-2 px-2 text-xs transition-colors",
                   active ? "text-sky-600 dark:text-sky-400" : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300",
                 )}
               >

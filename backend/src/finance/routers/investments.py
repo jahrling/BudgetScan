@@ -19,18 +19,26 @@ from finance.models.lot import Lot, LotDisposal
 from finance.models.position_snapshot import PositionSnapshot
 from finance.models.security import PriceHistory, Security
 from finance.schemas.investment import (
+    HoldingDetailRead,
+    HoldingSummaryRead,
     InvestmentSettingsRead,
     InvestmentSettingsUpdate,
     InvestmentTransactionCreate,
     InvestmentTransactionRead,
     InvestmentTransactionUpdate,
     LotRead,
+    OverviewRead,
     PriceHistoryRead,
     PositionSnapshotCreate,
     PositionSnapshotRead,
     SecurityCreate,
     SecurityRead,
     SecurityUpdate,
+)
+from finance.services.investment_analytics import (
+    get_holdings,
+    get_holding_detail,
+    get_overview,
 )
 from finance.services.investment_import import (
     InvestmentParseResult,
@@ -83,6 +91,124 @@ async def update_security(
     await session.commit()
     await session.refresh(security)
     return security
+
+
+# ── Aggregate views ───────────────────────────────────────────────────────
+
+
+@router.get("/overview", response_model=OverviewRead)
+async def overview(session: AsyncSession = Depends(get_session)):
+    data = await get_overview(session)
+    return OverviewRead(
+        total_value_cents=data.total_value_cents,
+        invested_capital_cents=data.invested_capital_cents,
+        cost_basis_cents=data.cost_basis_cents,
+        total_gain_cents=data.total_gain_cents,
+        income_cents=data.income_cents,
+        realized_gain_cents=data.realized_gain_cents,
+        accounts=[
+            {
+                "id": a.id,
+                "name": a.name,
+                "type": a.type,
+                "value_cents": a.value_cents,
+                "invested_capital_cents": a.invested_capital_cents,
+                "cost_basis_cents": a.cost_basis_cents,
+                "gain_cents": a.gain_cents,
+                "income_cents": a.income_cents,
+                "holdings_count": a.holdings_count,
+            }
+            for a in data.accounts
+        ],
+        holdings_count=data.holdings_count,
+    )
+
+
+@router.get("/holdings", response_model=list[HoldingSummaryRead])
+async def list_holdings(
+    account_id: int | None = None,
+    session: AsyncSession = Depends(get_session),
+):
+    rows = await get_holdings(session, account_id)
+    return [
+        HoldingSummaryRead(
+            security_id=h.security_id,
+            security_name=h.security_name,
+            symbol=h.symbol,
+            security_type=h.security_type,
+            account_id=h.account_id,
+            account_name=h.account_name,
+            account_type=h.account_type,
+            quantity_micros=h.quantity_micros,
+            latest_price_micros=h.latest_price_micros,
+            latest_price_date=h.latest_price_date,
+            market_value_cents=h.market_value_cents,
+            cost_basis_cents=h.cost_basis_cents,
+            invested_capital_cents=h.invested_capital_cents,
+            unrealized_gain_cents=h.unrealized_gain_cents,
+            income_cents=h.income_cents,
+            realized_gain_cents=h.realized_gain_cents,
+        )
+        for h in rows
+    ]
+
+
+@router.get("/holdings/{security_id}", response_model=HoldingDetailRead)
+async def holding_detail(
+    security_id: int,
+    account_id: int | None = None,
+    session: AsyncSession = Depends(get_session),
+):
+    detail = await get_holding_detail(session, security_id, account_id)
+    if detail is None:
+        raise HTTPException(404, "Security not found")
+    return HoldingDetailRead(
+        security=detail.security,
+        account_id=detail.account_id,
+        account_name=detail.account_name,
+        quantity_micros=detail.quantity_micros,
+        latest_price_micros=detail.latest_price_micros,
+        latest_price_date=detail.latest_price_date,
+        market_value_cents=detail.market_value_cents,
+        cost_basis_cents=detail.cost_basis_cents,
+        invested_capital_cents=detail.invested_capital_cents,
+        unrealized_gain_cents=detail.unrealized_gain_cents,
+        income_cents=detail.income_cents,
+        realized_gain_cents=detail.realized_gain_cents,
+        lots=[
+            {
+                **{
+                    "id": lwd.lot.id,
+                    "account_id": lwd.lot.account_id,
+                    "security_id": lwd.lot.security_id,
+                    "opened_at": lwd.lot.opened_at,
+                    "opened_by_txn_id": lwd.lot.opened_by_txn_id,
+                    "quantity_micros_original": lwd.lot.quantity_micros_original,
+                    "quantity_micros_remaining": lwd.lot.quantity_micros_remaining,
+                    "cost_basis_cents": lwd.lot.cost_basis_cents,
+                    "is_reinvestment": lwd.lot.is_reinvestment,
+                    "source": lwd.lot.source,
+                    "created_at": lwd.lot.created_at,
+                    "updated_at": lwd.lot.updated_at,
+                },
+                "disposals": [
+                    {
+                        "id": d.id,
+                        "lot_id": d.lot_id,
+                        "sell_txn_id": d.sell_txn_id,
+                        "quantity_micros": d.quantity_micros,
+                        "proceeds_cents": d.proceeds_cents,
+                        "basis_cents": d.basis_cents,
+                        "realized_gain_cents": d.realized_gain_cents,
+                        "term": d.term,
+                    }
+                    for d in lwd.disposals
+                ],
+            }
+            for lwd in detail.lots
+        ],
+        transactions=detail.transactions,
+    )
 
 
 # ── Investment transactions ────────────────────────────────────────────────
