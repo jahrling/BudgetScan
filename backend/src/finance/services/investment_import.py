@@ -119,6 +119,7 @@ class InvestmentParseResult:
     unmapped_accounts: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     skipped_count: int = 0
+    skipped_banking_count: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -269,6 +270,8 @@ def parse_investment_qif(text: str) -> InvestmentParseResult:
                 section_kind = "prices"
             elif hl in ("option:autoswitch", "clear:autoswitch"):
                 continue
+            elif any(hl.startswith(f"type:{t}") for t in ("bank", "ccard", "cash", "oth")):
+                section_kind = "banking"
             else:
                 section_kind = "other"
             record = {}
@@ -285,6 +288,8 @@ def parse_investment_qif(text: str) -> InvestmentParseResult:
                 invst_seq += 1
             elif section_kind == "security_def":
                 _flush_security_record(record, result)
+            elif section_kind == "banking":
+                result.skipped_banking_count += 1
             record = {}
             continue
 

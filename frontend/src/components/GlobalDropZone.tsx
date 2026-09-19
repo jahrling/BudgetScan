@@ -107,6 +107,7 @@ export function GlobalDropZone({ children }: { children: ReactNode }) {
       }
 
       if (route === "import") {
+        if (location.pathname === "/investments") return;
         setPendingFile(file);
         if (location.pathname !== "/sync") navigate("/sync");
       } else if (route === "receipt") {
@@ -137,7 +138,7 @@ export function GlobalDropZone({ children }: { children: ReactNode }) {
   return (
     <DropContext.Provider value={{ pendingFile, consumeFile, resetDrag }}>
       {children}
-      {(dragging || uploading) && (
+      {(dragging || uploading) && location.pathname !== "/investments" && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm pointer-events-none">
           <div className="flex flex-col items-center rounded-2xl border-2 border-dashed border-white/70 bg-white/10 px-12 py-10">
             <Upload className="h-12 w-12 text-white mb-3" />
