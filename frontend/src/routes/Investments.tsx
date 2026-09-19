@@ -722,7 +722,7 @@ interface LotRebuildResult {
   disposals_created: number;
 }
 
-function ImportSection() {
+function ImportSection({ expanded, onToggle }: { expanded: boolean; onToggle: () => void }) {
   const qc = useQueryClient();
   const { resetDrag } = usePendingFile();
   const { data: allAccounts = [] } = useAccounts();
@@ -734,7 +734,6 @@ function ImportSection() {
   const [fileName, setFileName] = useState<string | null>(null);
   const [importResult, setImportResult] = useState<QIFImportResult | null>(null);
   const [rebuildResult, setRebuildResult] = useState<LotRebuildResult | null>(null);
-  const [expanded, setExpanded] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const uploadMut = useMutation({
@@ -798,7 +797,7 @@ function ImportSection() {
     <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden">
       <button
         type="button"
-        onClick={() => setExpanded(!expanded)}
+        onClick={onToggle}
         className="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold text-gray-900 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
       >
         <span>Import QIF</span>
@@ -982,6 +981,7 @@ function ImportSection() {
 
 export default function Investments() {
   const [view, setView] = useState<"overview" | "holdings">("overview");
+  const [importExpanded, setImportExpanded] = useState(false);
   const [selectedHolding, setSelectedHolding] = useState<{
     securityId: number;
     accountId: number;
@@ -1004,14 +1004,27 @@ export default function Investments() {
           <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
             Investments
           </h1>
-          <SegmentedControl
-            value={view}
-            onChange={setView}
-            options={viewOptions}
-          />
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setImportExpanded(true)}
+            >
+              <Upload className="h-4 w-4 mr-1.5" />
+              Import QIF
+            </Button>
+            <SegmentedControl
+              value={view}
+              onChange={setView}
+              options={viewOptions}
+            />
+          </div>
         </div>
 
-        <ImportSection />
+        <ImportSection
+          expanded={importExpanded}
+          onToggle={() => setImportExpanded(!importExpanded)}
+        />
 
         {view === "overview" ? (
           <OverviewView />
