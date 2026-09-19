@@ -113,14 +113,19 @@ def extract_json(text: str) -> dict[str, Any]:
     raise OCRError("Model returned no JSON-looking content")
 
 
-async def call_ollama_vision(jpeg_bytes: bytes, *, model: str | None = None) -> str:
-    """Call Ollama with the receipt image. Returns the raw model response text."""
+async def call_ollama_vision(
+    jpeg_bytes: bytes,
+    *,
+    prompt: str | None = None,
+    model: str | None = None,
+) -> str:
+    """Call Ollama vision with an image. Returns the raw model response text."""
     model_name = model or settings.ollama_vision_model
     b64 = base64.b64encode(jpeg_bytes).decode("ascii")
     url = f"{settings.ollama_url.rstrip('/')}/api/generate"
     payload = {
         "model": model_name,
-        "prompt": PROMPT,
+        "prompt": prompt or PROMPT,
         "images": [b64],
         "stream": False,
         "format": "json",
@@ -133,15 +138,20 @@ async def call_ollama_vision(jpeg_bytes: bytes, *, model: str | None = None) -> 
     return str(data.get("response", ""))
 
 
-async def ocr_receipt_bytes(raw: bytes, *, model: str | None = None) -> dict[str, Any]:
-    """Run the full OCR pipeline on raw image bytes.
+async def ocr_image_bytes(
+    raw: bytes,
+    *,
+    prompt: str | None = None,
+    model: str | None = None,
+) -> dict[str, Any]:
+    """Preprocess an image, call Ollama vision, and extract JSON.
 
     Retries the JSON extraction once if the first reply is unparseable.
     """
     jpeg = preprocess_image(raw)
     last_text = ""
     for attempt in range(2):
-        text = await call_ollama_vision(jpeg, model=model)
+        text = await call_ollama_vision(jpeg, prompt=prompt, model=model)
         last_text = text
         try:
             return extract_json(text)
@@ -150,8 +160,11 @@ async def ocr_receipt_bytes(raw: bytes, *, model: str | None = None) -> dict[str
                 logger.warning("OCR JSON parse failed twice; last reply=%r", text[:500])
                 raise OCRError(f"Could not parse JSON after retry. Last reply: {text[:200]}")
             continue
-    # Unreachable, but keeps mypy happy.
     raise OCRError(f"Unexpected OCR loop exit. Last reply: {last_text[:200]}")
+
+
+async def ocr_receipt_bytes(raw: bytes, *, model: str | None = None) -> dict[str, Any]:
+    return await ocr_image_bytes(raw, model=model)
 
 
 async def ocr_receipt_file(path: Path, *, model: str | None = None) -> dict[str, Any]:

@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -185,7 +185,7 @@ async def get_holdings(
             func.sum(Lot.quantity_micros_remaining).label("qty"),
             func.sum(Lot.cost_basis_cents).label("basis"),
             func.sum(
-                func.case(
+                case(
                     (Lot.is_reinvestment.is_(False), Lot.cost_basis_cents),
                     else_=0,
                 )

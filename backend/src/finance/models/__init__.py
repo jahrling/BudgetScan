@@ -14,6 +14,7 @@ from finance.models.investment_transaction import InvestmentTransaction
 from finance.models.position_snapshot import PositionSnapshot
 from finance.models.lot import Lot, LotDisposal
 from finance.models.investment_settings import InvestmentSettings
+from finance.models.statement_scan import StatementScan
 
 __all__ = [
     "Base",
@@ -34,4 +35,5 @@ __all__ = [
     "Lot",
     "LotDisposal",
     "InvestmentSettings",
+    "StatementScan",
 ]

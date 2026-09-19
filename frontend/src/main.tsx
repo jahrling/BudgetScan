@@ -20,6 +20,8 @@ const Docs = lazy(() => import('./routes/Docs'))
 const QuickenSync = lazy(() => import('./routes/QuickenSync'))
 const Rules = lazy(() => import('./routes/Rules'))
 const Investments = lazy(() => import('./routes/Investments'))
+const StatementProcessing = lazy(() => import('./routes/StatementProcessing'))
+const StatementReview = lazy(() => import('./routes/StatementReview'))
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -128,6 +130,22 @@ function App() {
             element={
               <AuthGuard>
                 <Investments />
+              </AuthGuard>
+            }
+          />
+          <Route
+            path="/statements/:id/processing"
+            element={
+              <AuthGuard>
+                <StatementProcessing />
+              </AuthGuard>
+            }
+          />
+          <Route
+            path="/statements/:id/review"
+            element={
+              <AuthGuard>
+                <StatementReview />
               </AuthGuard>
             }
           />
