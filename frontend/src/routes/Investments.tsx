@@ -709,6 +709,7 @@ const INVESTMENT_ACCOUNT_TYPES = new Set([
 interface QIFImportResult {
   transactions_imported: number;
   securities_created: number;
+  accounts_created: number;
   prices_imported: number;
   skipped_duplicate: number;
   skipped_other: number;
@@ -738,11 +739,11 @@ function ImportSection({ expanded, onToggle }: { expanded: boolean; onToggle: ()
 
   const uploadMut = useMutation({
     mutationFn: async (file: File) => {
-      if (!accountId) throw new Error("Select an account first");
       const form = new FormData();
       form.append("file", file);
+      const params = accountId ? `?account_id=${accountId}` : "";
       const res = await fetch(
-        `/api/investments/import/qif?account_id=${accountId}`,
+        `/api/investments/import/qif${params}`,
         { method: "POST", credentials: "include", body: form },
       );
       if (!res.ok) {
@@ -754,6 +755,7 @@ function ImportSection({ expanded, onToggle }: { expanded: boolean; onToggle: ()
     onSuccess: (data) => {
       setImportResult(data);
       setRebuildResult(null);
+      qc.invalidateQueries({ queryKey: ["accounts"] });
     },
   });
 
@@ -810,39 +812,14 @@ function ImportSection({ expanded, onToggle }: { expanded: boolean; onToggle: ()
 
       {expanded && (
         <div className="px-4 pb-4 space-y-3 border-t border-gray-100 dark:border-gray-700 pt-3">
-          {/* Account picker */}
-          <div>
-            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
-              Target account
-            </label>
-            <Select
-              value={String(accountId)}
-              onChange={(e) => setAccountId(e.target.value ? Number(e.target.value) : "")}
-            >
-              <option value="" disabled>
-                Select an investment account…
-              </option>
-              {investmentAccounts.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name} ({a.type})
-                </option>
-              ))}
-            </Select>
-            {investmentAccounts.length === 0 && (
-              <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-                No investment accounts found. Create one first (brokerage, IRA, 401k, etc.).
-              </p>
-            )}
-          </div>
-
           {/* Drop zone */}
           <div
-            onClick={() => accountId && fileInputRef.current?.click()}
+            onClick={() => !uploadMut.isPending && fileInputRef.current?.click()}
             onDrop={(e) => {
               e.preventDefault();
               e.stopPropagation();
               resetDrag();
-              if (!accountId || uploadMut.isPending) return;
+              if (uploadMut.isPending) return;
               const f = e.dataTransfer.files[0];
               if (f) handleFile(f);
             }}
@@ -850,12 +827,7 @@ function ImportSection({ expanded, onToggle }: { expanded: boolean; onToggle: ()
               e.preventDefault();
               e.stopPropagation();
             }}
-            className={cn(
-              "flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-5 text-center transition-colors",
-              accountId
-                ? "border-gray-300 dark:border-gray-600 hover:border-sky-400 cursor-pointer"
-                : "border-gray-200 dark:border-gray-700 opacity-50 cursor-not-allowed",
-            )}
+            className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-sky-400 cursor-pointer p-5 text-center transition-colors"
           >
             <input
               ref={fileInputRef}
@@ -863,7 +835,7 @@ function ImportSection({ expanded, onToggle }: { expanded: boolean; onToggle: ()
               accept=".qif"
               onChange={onPick}
               className="hidden"
-              disabled={!accountId || uploadMut.isPending}
+              disabled={uploadMut.isPending}
             />
             {uploadMut.isPending ? (
               <>
@@ -879,11 +851,33 @@ function ImportSection({ expanded, onToggle }: { expanded: boolean; onToggle: ()
                   Drop a QIF file or click to browse
                 </p>
                 <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-                  Investment transactions only
+                  Accounts are created automatically from the file
                 </p>
               </>
             )}
           </div>
+
+          {/* Optional account override */}
+          {investmentAccounts.length > 0 && (
+            <div>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                Override target account (optional)
+              </label>
+              <Select
+                value={String(accountId)}
+                onChange={(e) => setAccountId(e.target.value ? Number(e.target.value) : "")}
+              >
+                <option value="">
+                  Auto-detect from file
+                </option>
+                {investmentAccounts.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name} ({a.type})
+                  </option>
+                ))}
+              </Select>
+            </div>
+          )}
 
           {/* Upload error */}
           {uploadMut.isError && (
@@ -903,6 +897,9 @@ function ImportSection({ expanded, onToggle }: { expanded: boolean; onToggle: ()
                 </p>
                 <div className="text-xs text-emerald-700 dark:text-emerald-400 mt-1 space-y-0.5">
                   <p>{importResult.transactions_imported} transactions imported</p>
+                  {importResult.accounts_created > 0 && (
+                    <p>{importResult.accounts_created} accounts created</p>
+                  )}
                   {importResult.securities_created > 0 && (
                     <p>{importResult.securities_created} securities created</p>
                   )}
