@@ -26,6 +26,7 @@ import type {
   LotDetail,
 } from "../types/models";
 import { cn } from "../lib/utils";
+import { usePendingFile } from "../components/GlobalDropZone";
 
 const viewOptions: Array<{ value: "overview" | "holdings"; label: string }> = [
   { value: "overview", label: "Overview" },
@@ -723,6 +724,7 @@ interface LotRebuildResult {
 
 function ImportSection() {
   const qc = useQueryClient();
+  const { resetDrag } = usePendingFile();
   const { data: allAccounts = [] } = useAccounts();
   const investmentAccounts = allAccounts.filter(
     (a) => INVESTMENT_ACCOUNT_TYPES.has(a.type),
@@ -839,11 +841,16 @@ function ImportSection() {
             onClick={() => accountId && fileInputRef.current?.click()}
             onDrop={(e) => {
               e.preventDefault();
+              e.stopPropagation();
+              resetDrag();
               if (!accountId || uploadMut.isPending) return;
               const f = e.dataTransfer.files[0];
               if (f) handleFile(f);
             }}
-            onDragOver={(e) => e.preventDefault()}
+            onDragOver={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
             className={cn(
               "flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-5 text-center transition-colors",
               accountId
