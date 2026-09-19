@@ -500,6 +500,7 @@ async def upload_prices(
 class QIFImportResponse(BaseModel):
     transactions_imported: int
     securities_created: int
+    accounts_created: int
     prices_imported: int
     skipped_duplicate: int
     skipped_other: int
@@ -510,18 +511,22 @@ class QIFImportResponse(BaseModel):
 @router.post("/import/qif", response_model=QIFImportResponse)
 async def import_investment_qif(
     file: UploadFile,
-    account_id: int,
+    account_id: int | None = None,
     session: AsyncSession = Depends(get_session),
 ):
     """Import investment transactions from a QIF file.
 
-    ``account_id`` is required because QIF investment exports from Quicken
-    may lack the !Account header (F11).
+    When ``account_id`` is provided, all transactions are assigned to that
+    account.  When omitted, accounts are auto-discovered from QIF !Account
+    blocks and created if they don't already exist.
     """
     from finance.models.account import Account
-    account = await session.get(Account, account_id)
-    if account is None:
-        raise HTTPException(404, "Account not found")
+
+    fallback_account: Account | None = None
+    if account_id is not None:
+        fallback_account = await session.get(Account, account_id)
+        if fallback_account is None:
+            raise HTTPException(404, "Account not found")
 
     raw = await file.read(_MAX_UPLOAD_BYTES + 1)
     if len(raw) > _MAX_UPLOAD_BYTES:
@@ -529,7 +534,30 @@ async def import_investment_qif(
     content = raw.decode("cp1252", errors="replace")
     parsed: InvestmentParseResult = parse_investment_qif(content)
 
-    # 1. Create/resolve securities by name
+    # 1. Resolve / auto-create accounts from QIF !Account blocks
+    account_map: dict[str, int] = {}
+    accounts_created = 0
+
+    existing_accts = (await session.execute(select(Account))).scalars().all()
+    for acct in existing_accts:
+        account_map[acct.name] = acct.id
+
+    for pa in parsed.accounts:
+        if pa.name not in account_map:
+            acct = Account(name=pa.name, type="brokerage", quicken_id=pa.name)
+            session.add(acct)
+            await session.flush()
+            account_map[acct.name] = acct.id
+            accounts_created += 1
+
+    def resolve_account_id(account_key: str) -> int | None:
+        if account_key and account_key in account_map:
+            return account_map[account_key]
+        if fallback_account is not None:
+            return fallback_account.id
+        return None
+
+    # 2. Create/resolve securities by name
     security_map: dict[str, Security] = {}
     existing_secs = await session.execute(select(Security))
     for sec in existing_secs.scalars().all():
@@ -548,7 +576,6 @@ async def import_investment_qif(
             security_map[sc.name] = sec
             securities_created += 1
 
-    # Also create securities referenced by transactions but not in !Type:Security
     for cand in parsed.candidates:
         if cand.security_name and cand.security_name not in security_map:
             sec = Security(name=cand.security_name, security_type="other")
@@ -557,7 +584,7 @@ async def import_investment_qif(
             security_map[cand.security_name] = sec
             securities_created += 1
 
-    # 2. Import prices
+    # 3. Import prices
     prices_imported = 0
     for pc in parsed.prices:
         sec = security_map.get(pc.security_name)
@@ -579,21 +606,26 @@ async def import_investment_qif(
         ))
         prices_imported += 1
 
-    # 3. Import transactions (with dedup on external_id)
+    # 4. Import transactions (with dedup on external_id)
     txns_imported = 0
     skipped_duplicate = 0
+    skipped_no_account = 0
     for cand in parsed.candidates:
+        resolved_id = resolve_account_id(cand.account_key)
+        if resolved_id is None:
+            skipped_no_account += 1
+            continue
+
         security_id = None
         if cand.security_name:
             sec = security_map.get(cand.security_name)
             if sec:
                 security_id = sec.id
 
-        # Dedupe check
         if cand.external_id:
             existing = await session.execute(
                 select(InvestmentTransaction).where(
-                    InvestmentTransaction.account_id == account_id,
+                    InvestmentTransaction.account_id == resolved_id,
                     InvestmentTransaction.external_id == cand.external_id,
                 )
             )
@@ -602,7 +634,7 @@ async def import_investment_qif(
                 continue
 
         txn = InvestmentTransaction(
-            account_id=account_id,
+            account_id=resolved_id,
             security_id=security_id,
             action=cand.action,
             trade_date=cand.trade_date,
@@ -617,11 +649,17 @@ async def import_investment_qif(
         session.add(txn)
         txns_imported += 1
 
+    if skipped_no_account > 0:
+        parsed.errors.append(
+            f"{skipped_no_account} transaction(s) skipped: no account could be determined"
+        )
+
     await session.commit()
 
     return QIFImportResponse(
         transactions_imported=txns_imported,
         securities_created=securities_created,
+        accounts_created=accounts_created,
         prices_imported=prices_imported,
         skipped_duplicate=skipped_duplicate,
         skipped_other=parsed.skipped_count,

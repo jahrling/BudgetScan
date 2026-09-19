@@ -112,10 +112,17 @@ class PriceCandidate:
 
 
 @dataclass
+class ParsedAccount:
+    """An account discovered from a QIF !Account block."""
+    name: str
+    qif_type: str
+
+@dataclass
 class InvestmentParseResult:
     candidates: list[InvestmentCandidate] = field(default_factory=list)
     securities: list[SecurityCandidate] = field(default_factory=list)
     prices: list[PriceCandidate] = field(default_factory=list)
+    accounts: list[ParsedAccount] = field(default_factory=list)
     unmapped_accounts: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     skipped_count: int = 0
@@ -280,7 +287,12 @@ def parse_investment_qif(text: str) -> InvestmentParseResult:
         if line == "^":
             if section_kind == "account":
                 acct_name = record.get("N", "").strip()
+                acct_type = record.get("T", "").strip()
                 current_account_key = acct_name
+                if acct_name and acct_type.lower() in ("invst", "invest", "port"):
+                    seen = {a.name for a in result.accounts}
+                    if acct_name not in seen:
+                        result.accounts.append(ParsedAccount(name=acct_name, qif_type=acct_type))
             elif section_kind == "invst":
                 _flush_invst_record(
                     record, current_account_key, result, invst_seq,
