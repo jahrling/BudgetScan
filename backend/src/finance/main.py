@@ -18,6 +18,7 @@ from finance.routers.quicken import export_router as quicken_export_router
 from finance.routers.quicken import import_router as quicken_import_router
 from finance.routers.rules import router as rules_router
 from finance.routers.receipts import router as receipts_router
+from finance.routers.statement_scans import router as statement_scans_router
 from finance.routers.docs import router as docs_router
 from finance.routers.investments import router as investments_router
 from finance.routers.transactions import router as transactions_router
@@ -52,6 +53,7 @@ app.include_router(rules_router)
 app.include_router(transfers_router)
 app.include_router(investments_router)
 app.include_router(docs_router)
+app.include_router(statement_scans_router)
 
 
 @app.get("/api/health")

@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, Upload } from "lucide-react";
+import { ChevronLeft, FileImage, Upload } from "lucide-react";
 import { Layout } from "../components/Layout";
 import { SegmentedControl } from "../components/ui/segmented-control";
 import { Button } from "../components/ui/button";
@@ -27,6 +28,7 @@ import type {
 } from "../types/models";
 import { cn } from "../lib/utils";
 import { usePendingFile } from "../components/GlobalDropZone";
+import { uploadStatementScan } from "../hooks/useStatementScans";
 
 const viewOptions: Array<{ value: "overview" | "holdings" | "import"; label: string }> = [
   { value: "overview", label: "Overview" },
@@ -725,6 +727,7 @@ interface LotRebuildResult {
 }
 
 function ImportSection() {
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const { resetDrag } = usePendingFile();
   const { data: allAccounts = [] } = useAccounts();
@@ -737,6 +740,9 @@ function ImportSection() {
   const [importResult, setImportResult] = useState<QIFImportResult | null>(null);
   const [rebuildResult, setRebuildResult] = useState<LotRebuildResult | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const statementInputRef = useRef<HTMLInputElement>(null);
+  const [statementUploading, setStatementUploading] = useState(false);
+  const [statementError, setStatementError] = useState<string | null>(null);
 
   const uploadMut = useMutation({
     mutationFn: async (file: File) => {
@@ -954,6 +960,65 @@ function ImportSection() {
               )}
             </div>
           )}
+
+          {/* Statement image upload */}
+          <div className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-4">
+            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+              Statement OCR
+            </h3>
+            <div
+              onClick={() =>
+                !statementUploading && statementInputRef.current?.click()
+              }
+              className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-sky-400 cursor-pointer p-5 text-center transition-colors"
+            >
+              <input
+                ref={statementInputRef}
+                type="file"
+                accept=".jpg,.jpeg,.png"
+                onChange={async (e) => {
+                  const f = e.target.files?.[0];
+                  e.target.value = "";
+                  if (!f) return;
+                  setStatementUploading(true);
+                  setStatementError(null);
+                  try {
+                    const scan = await uploadStatementScan(f);
+                    navigate(`/statements/${scan.id}/processing`);
+                  } catch (err) {
+                    setStatementError(
+                      err instanceof Error ? err.message : "Upload failed",
+                    );
+                  } finally {
+                    setStatementUploading(false);
+                  }
+                }}
+                className="hidden"
+                disabled={statementUploading}
+              />
+              {statementUploading ? (
+                <>
+                  <span className="inline-block h-3 w-3 rounded-sm bg-sky-500 mb-2 animate-pulse" />
+                  <p className="text-sm text-gray-500">Uploading...</p>
+                </>
+              ) : (
+                <>
+                  <FileImage className="h-6 w-6 mb-1.5 text-gray-400" />
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                    Upload a statement image for OCR
+                  </p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                    JPG or PNG — extracts holdings via local AI
+                  </p>
+                </>
+              )}
+            </div>
+            {statementError && (
+              <div className="mt-2 rounded-lg border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-900/30 p-3 text-sm text-red-800 dark:text-red-300">
+                {statementError}
+              </div>
+            )}
+          </div>
     </div>
   );
 }

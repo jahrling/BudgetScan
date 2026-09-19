@@ -365,3 +365,65 @@ export interface InvestmentSettings {
   default_lot_method: string;
   price_fetch_enabled: boolean;
 }
+
+export interface PositionSnapshot {
+  id: number;
+  account_id: number;
+  security_id: number;
+  as_of: string;
+  quantity_micros: number;
+  market_value_cents: number;
+  price_micros: number | null;
+  cost_basis_cents: number | null;
+  source: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// ── Statement scan domain ────────────────────────────────────────────────
+
+export interface StatementScan {
+  id: number;
+  file_path: string;
+  original_filename: string;
+  sha256: string;
+  account_id: number | null;
+  as_of: string | null;
+  ocr_status: "pending" | "done" | "failed";
+  ocr_error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StatementReviewPosition {
+  symbol: string | null;
+  name: string;
+  quantity_micros: number;
+  price_micros: number | null;
+  market_value_cents: number;
+  cost_basis_cents: number | null;
+  matched_security_id: number | null;
+  matched_security_name: string | null;
+}
+
+export interface StatementReviewPreview {
+  account_name: string | null;
+  statement_date: string | null;
+  positions: StatementReviewPosition[];
+}
+
+export interface MaterializePosition {
+  security_id: number | null;
+  symbol: string | null;
+  name: string;
+  quantity_micros: number;
+  market_value_cents: number;
+  price_micros: number | null;
+  cost_basis_cents: number | null;
+}
+
+export interface MaterializeRequest {
+  account_id: number;
+  as_of: string;
+  positions: MaterializePosition[];
+}

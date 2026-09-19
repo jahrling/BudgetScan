@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     ollama_embed_model: str = "nomic-embed-text"
     ollama_timeout_seconds: float = 120.0
     receipts_dir: str = "data/receipts"
+    statements_dir: str = "data/statements"
     receipt_staging_dir: str = ""  # alias; falls back to receipts_dir
     max_receipt_upload_bytes: int = 10 * 1024 * 1024
 
