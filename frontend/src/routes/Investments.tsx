@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, ChevronLeft, ChevronUp, Upload } from "lucide-react";
+import { ChevronLeft, Upload } from "lucide-react";
 import { Layout } from "../components/Layout";
 import { SegmentedControl } from "../components/ui/segmented-control";
 import { Button } from "../components/ui/button";
@@ -28,9 +28,10 @@ import type {
 import { cn } from "../lib/utils";
 import { usePendingFile } from "../components/GlobalDropZone";
 
-const viewOptions: Array<{ value: "overview" | "holdings"; label: string }> = [
+const viewOptions: Array<{ value: "overview" | "holdings" | "import"; label: string }> = [
   { value: "overview", label: "Overview" },
   { value: "holdings", label: "Holdings" },
+  { value: "import", label: "Import" },
 ];
 
 // ── Stat tile ────────────────────────────────────────────────────────────
@@ -723,7 +724,7 @@ interface LotRebuildResult {
   disposals_created: number;
 }
 
-function ImportSection({ expanded, onToggle }: { expanded: boolean; onToggle: () => void }) {
+function ImportSection() {
   const qc = useQueryClient();
   const { resetDrag } = usePendingFile();
   const { data: allAccounts = [] } = useAccounts();
@@ -796,24 +797,9 @@ function ImportSection({ expanded, onToggle }: { expanded: boolean; onToggle: ()
   }
 
   return (
-    <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden">
-      <button
-        type="button"
-        onClick={onToggle}
-        className="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold text-gray-900 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
-      >
-        <span>Import QIF</span>
-        {expanded ? (
-          <ChevronUp className="h-4 w-4 text-gray-400" />
-        ) : (
-          <ChevronDown className="h-4 w-4 text-gray-400" />
-        )}
-      </button>
-
-      {expanded && (
-        <div className="px-4 pb-4 space-y-3 border-t border-gray-100 dark:border-gray-700 pt-3">
-          {/* Drop zone */}
-          <div
+    <div className="space-y-4">
+      {/* Drop zone */}
+      <div
             onClick={() => !uploadMut.isPending && fileInputRef.current?.click()}
             onDrop={(e) => {
               e.preventDefault();
@@ -968,8 +954,6 @@ function ImportSection({ expanded, onToggle }: { expanded: boolean; onToggle: ()
               )}
             </div>
           )}
-        </div>
-      )}
     </div>
   );
 }
@@ -977,8 +961,7 @@ function ImportSection({ expanded, onToggle }: { expanded: boolean; onToggle: ()
 // ── Main component ───────────────────────────────────────────────────────
 
 export default function Investments() {
-  const [view, setView] = useState<"overview" | "holdings">("overview");
-  const [importExpanded, setImportExpanded] = useState(false);
+  const [view, setView] = useState<"overview" | "holdings" | "import">("overview");
   const [selectedHolding, setSelectedHolding] = useState<{
     securityId: number;
     accountId: number;
@@ -1001,32 +984,19 @@ export default function Investments() {
           <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
             Investments
           </h1>
-          <div className="flex items-center gap-3">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setImportExpanded(true)}
-            >
-              <Upload className="h-4 w-4 mr-1.5" />
-              Import QIF
-            </Button>
-            <SegmentedControl
-              value={view}
-              onChange={setView}
-              options={viewOptions}
-            />
-          </div>
+          <SegmentedControl
+            value={view}
+            onChange={setView}
+            options={viewOptions}
+          />
         </div>
-
-        <ImportSection
-          expanded={importExpanded}
-          onToggle={() => setImportExpanded(!importExpanded)}
-        />
 
         {view === "overview" ? (
           <OverviewView />
-        ) : (
+        ) : view === "holdings" ? (
           <HoldingsView onSelect={setSelectedHolding} />
+        ) : (
+          <ImportSection />
         )}
       </div>
     </Layout>

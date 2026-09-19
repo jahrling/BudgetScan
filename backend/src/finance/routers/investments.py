@@ -538,12 +538,20 @@ async def import_investment_qif(
     account_map: dict[str, int] = {}
     accounts_created = 0
 
+    _BANKING_TYPES = {"checking", "savings", "credit_card", "cash"}
+
     existing_accts = (await session.execute(select(Account))).scalars().all()
+    existing_by_name: dict[str, Account] = {}
     for acct in existing_accts:
         account_map[acct.name] = acct.id
+        existing_by_name[acct.name] = acct
 
     for pa in parsed.accounts:
-        if pa.name not in account_map:
+        if pa.name in existing_by_name:
+            acct = existing_by_name[pa.name]
+            if acct.type in _BANKING_TYPES:
+                acct.type = "brokerage"
+        else:
             acct = Account(name=pa.name, type="brokerage", quicken_id=pa.name)
             session.add(acct)
             await session.flush()
