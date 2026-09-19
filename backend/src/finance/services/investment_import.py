@@ -134,6 +134,21 @@ class InvestmentParseResult:
 # ---------------------------------------------------------------------------
 
 
+_FRAC_RE = re.compile(r"^(-?)(\d+)\s+(\d+)/(\d+)$")
+
+
+def _resolve_fractional(s: str) -> str:
+    """Convert Quicken fractional notation (e.g. '98 3/4') to decimal."""
+    m = _FRAC_RE.match(s)
+    if not m:
+        return s
+    sign, whole, num, den = m.group(1), int(m.group(2)), int(m.group(3)), int(m.group(4))
+    if den == 0:
+        return s
+    value = whole + num / den
+    return f"{sign}{value:.6f}"
+
+
 _AMOUNT_RE = re.compile(r"^-?\d+(?:\.\d+)?$")
 
 
@@ -141,6 +156,7 @@ def _parse_cents(raw: str) -> int:
     s = raw.strip().replace(",", "").replace("$", "")
     if not s:
         raise ValueError("empty amount")
+    s = _resolve_fractional(s)
     if not _AMOUNT_RE.match(s):
         raise ValueError(f"unparseable amount: {raw!r}")
     neg = s.startswith("-")
@@ -156,10 +172,11 @@ def _parse_cents(raw: str) -> int:
 
 
 def _parse_micros(raw: str) -> int:
-    """Parse a decimal string to integer millionths (× 1,000,000)."""
+    """Parse a decimal or fractional string to integer millionths (x 1,000,000)."""
     s = raw.strip().replace(",", "").replace("$", "")
     if not s:
         raise ValueError("empty value")
+    s = _resolve_fractional(s)
     neg = s.startswith("-")
     if neg:
         s = s[1:]
