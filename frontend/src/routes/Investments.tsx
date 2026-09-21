@@ -961,7 +961,7 @@ function ImportSection() {
             </div>
           )}
 
-          {/* Statement image upload */}
+          {/* Statement upload (image or PDF) */}
           <div className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-4">
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
               Statement OCR
@@ -975,7 +975,7 @@ function ImportSection() {
               <input
                 ref={statementInputRef}
                 type="file"
-                accept=".jpg,.jpeg,.png"
+                accept=".jpg,.jpeg,.png,.pdf"
                 onChange={async (e) => {
                   const f = e.target.files?.[0];
                   e.target.value = "";
@@ -1005,10 +1005,10 @@ function ImportSection() {
                 <>
                   <FileImage className="h-6 w-6 mb-1.5 text-gray-400" />
                   <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                    Upload a statement image for OCR
+                    Upload a statement for OCR
                   </p>
                   <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-                    JPG or PNG — extracts holdings via local AI
+                    PDF, JPG, or PNG — extracts holdings via local AI
                   </p>
                 </>
               )}

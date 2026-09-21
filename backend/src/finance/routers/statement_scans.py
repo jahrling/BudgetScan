@@ -58,15 +58,22 @@ async def get_scan(
     return await scan_service.get_scan(session, scan_id)
 
 
-@router.get("/{scan_id}/image")
-async def get_scan_image(
+@router.get("/{scan_id}/file")
+async def get_scan_file(
     scan_id: int, session: AsyncSession = Depends(get_session)
 ):
     scan = await scan_service.get_scan(session, scan_id)
     path = Path(scan.file_path)
     if not path.exists():
-        raise HTTPException(status_code=404, detail="Statement image missing on disk")
+        raise HTTPException(status_code=404, detail="Statement file missing on disk")
     return FileResponse(path, filename=scan.original_filename)
+
+@router.get("/{scan_id}/image")
+async def get_scan_image(
+    scan_id: int, session: AsyncSession = Depends(get_session)
+):
+    """Backwards-compatible alias."""
+    return await get_scan_file(scan_id, session)
 
 
 @router.post("/{scan_id}/reprocess", response_model=StatementScanRead)
