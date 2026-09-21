@@ -146,28 +146,33 @@ async def call_ollama_text(
     """Call Ollama with a text-only prompt. Returns the raw model response text."""
     model_name = model or settings.ollama_text_model
     url = f"{settings.ollama_url.rstrip('/')}/api/generate"
-    payload = {
+    payload: dict[str, Any] = {
         "model": model_name,
         "prompt": prompt,
         "stream": False,
-        "format": "json",
         "options": {"temperature": 0.1},
     }
-    async with httpx.AsyncClient(timeout=settings.ollama_timeout_seconds) as client:
+    timeout = httpx.Timeout(settings.ollama_timeout_seconds, connect=30.0)
+    async with httpx.AsyncClient(timeout=timeout) as client:
         resp = await client.post(url, json=payload)
         resp.raise_for_status()
         data = resp.json()
-    return str(data.get("response", ""))
+    response = str(data.get("response", ""))
+    logger.info(
+        "call_ollama_text: model=%s, prompt_len=%d, response_len=%d, done=%s",
+        model_name, len(prompt), len(response), data.get("done"),
+    )
+    return response
 
 
 def pdf_to_page_images(raw: bytes, *, dpi: int = 200) -> list[bytes]:
     """Render each page of a PDF to JPEG bytes using PyMuPDF."""
-    import fitz
+    import pymupdf
 
-    doc = fitz.open(stream=raw, filetype="pdf")
+    doc = pymupdf.open(stream=raw, filetype="pdf")
     pages: list[bytes] = []
     zoom = dpi / 72.0
-    mat = fitz.Matrix(zoom, zoom)
+    mat = pymupdf.Matrix(zoom, zoom)
     for page in doc:
         pix = page.get_pixmap(matrix=mat)
         pages.append(pix.tobytes("jpeg"))
@@ -209,9 +214,9 @@ MIN_TEXT_CHARS = 200
 
 def extract_pdf_text(raw: bytes) -> str:
     """Extract text from all pages of a PDF. Returns empty string if no text layer."""
-    import fitz
+    import pymupdf
 
-    doc = fitz.open(stream=raw, filetype="pdf")
+    doc = pymupdf.open(stream=raw, filetype="pdf")
     parts: list[str] = []
     for page in doc:
         parts.append(page.get_text())
@@ -226,18 +231,40 @@ async def parse_pdf_text(
     model: str | None = None,
 ) -> dict[str, Any]:
     """Send extracted PDF text to the text LLM for structured extraction."""
+    model_name = model or settings.ollama_text_model
     full_prompt = (prompt or "") + "\n\nHere is the statement text:\n\n" + text
-    last_reply = ""
+    logger.info(
+        "parse_pdf_text: sending %d chars of text to %s (prompt %d + text %d)",
+        len(full_prompt), model_name, len(prompt or ""), len(text),
+    )
     for attempt in range(2):
-        reply = await call_ollama_text(full_prompt, model=model)
-        last_reply = reply
+        try:
+            reply = await call_ollama_text(full_prompt, model=model)
+        except Exception as exc:
+            raise OCRError(
+                f"Ollama text call failed (model={model_name}): {exc}"
+            ) from exc
+        logger.info("parse_pdf_text attempt %d: got %d chars back", attempt + 1, len(reply))
+        if not reply.strip():
+            if attempt == 1:
+                raise OCRError(
+                    f"Model {model_name} returned empty response for PDF text "
+                    f"({len(text)} chars extracted, {len(full_prompt)} char prompt). "
+                    f"Check that the model is loaded: ollama list"
+                )
+            continue
         try:
             return extract_json(reply)
         except OCRError:
             if attempt == 1:
-                logger.warning("PDF text parse failed twice; last reply=%r", reply[:500])
-                raise OCRError(f"Could not parse JSON from PDF text after retry. Last reply: {reply[:200]}")
-    raise OCRError(f"Unexpected parse loop exit. Last reply: {last_reply[:200]}")
+                raise OCRError(
+                    f"Model {model_name} returned non-JSON after retry. "
+                    f"Text extracted: {len(text)} chars. Last reply: {reply[:300]}"
+                )
+    raise OCRError(
+        f"Model {model_name} returned empty response for PDF text "
+        f"({len(text)} chars extracted). Check that the model is loaded: ollama list"
+    )
 
 
 async def ocr_pdf_bytes(
@@ -252,35 +279,49 @@ async def ocr_pdf_bytes(
     Returns (parsed_dict, method) where method is "text" or "vision".
     """
     pdf_text = extract_pdf_text(raw)
+    text_len = len(pdf_text.strip())
 
-    if len(pdf_text.strip()) >= MIN_TEXT_CHARS:
-        logger.info("PDF has %d chars of extractable text; using text model", len(pdf_text.strip()))
-        result = await parse_pdf_text(pdf_text, prompt=text_prompt or prompt, model=model)
-        return result, "text"
+    if text_len >= MIN_TEXT_CHARS:
+        logger.info("PDF has %d chars of extractable text; using text model", text_len)
+        try:
+            result = await parse_pdf_text(pdf_text, prompt=text_prompt or prompt, model=model)
+            return result, "text"
+        except OCRError as text_err:
+            logger.warning("Text extraction failed (%s); falling back to vision OCR", text_err)
+            text_error = text_err
+    else:
+        text_error = None
 
-    logger.info("PDF has little/no text (%d chars); falling back to vision OCR", len(pdf_text.strip()))
-    pages = pdf_to_page_images(raw)
-    if not pages:
-        raise OCRError("PDF has no pages")
+    logger.info("PDF using vision OCR (text chars: %d, threshold: %d)", text_len, MIN_TEXT_CHARS)
+    try:
+        pages = pdf_to_page_images(raw)
+        if not pages:
+            raise OCRError("PDF has no pages")
 
-    all_results: list[dict[str, Any]] = []
-    for i, jpeg in enumerate(pages):
-        parsed = None
-        for attempt in range(2):
-            text = await call_ollama_vision(jpeg, prompt=prompt, model=model)
-            try:
-                parsed = extract_json(text)
-                break
-            except OCRError:
-                if attempt == 1:
-                    logger.warning("PDF page %d JSON parse failed twice; last reply=%r", i, text[:500])
-        if parsed is not None:
-            all_results.append(parsed)
+        all_results: list[dict[str, Any]] = []
+        for i, jpeg in enumerate(pages):
+            parsed = None
+            for attempt in range(2):
+                text = await call_ollama_vision(jpeg, prompt=prompt, model=model)
+                try:
+                    parsed = extract_json(text)
+                    break
+                except OCRError:
+                    if attempt == 1:
+                        logger.warning("PDF page %d JSON parse failed twice; last reply=%r", i, text[:500])
+            if parsed is not None:
+                all_results.append(parsed)
 
-    if not all_results:
-        raise OCRError("No pages produced parseable JSON")
+        if not all_results:
+            raise OCRError("No pages produced parseable JSON")
 
-    return _merge_page_results(all_results), "vision"
+        return _merge_page_results(all_results), "vision"
+    except Exception as vision_err:
+        parts = ["PDF processing failed."]
+        if text_error:
+            parts.append(f"Text extraction ({text_len} chars): {text_error}")
+        parts.append(f"Vision fallback: {vision_err}")
+        raise OCRError(" | ".join(parts)) from vision_err
 
 
 def _merge_page_results(results: list[dict[str, Any]]) -> dict[str, Any]:

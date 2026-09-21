@@ -153,8 +153,8 @@ async def store_upload(
 
     if ocr_service.is_pdf(raw):
         try:
-            import fitz
-            doc = fitz.open(stream=raw, filetype="pdf")
+            import pymupdf
+            doc = pymupdf.open(stream=raw, filetype="pdf")
             if doc.page_count == 0:
                 raise HTTPException(status_code=400, detail="PDF has no pages")
             doc.close()
