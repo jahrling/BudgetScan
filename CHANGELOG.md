@@ -2,6 +2,8 @@
 
 ## 2026-09-21
 
+- Add S&P 500 benchmark auto-download: fetches monthly SPY prices from Stooq, creates the security, stores price history, and sets it as portfolio benchmark — all in one click from Investment Settings.
+- Add risk-free rate auto-refresh: fetches current 6-month US T-bill yield from FRED and saves it for Sharpe ratio calculations. Both refresh buttons are in the Investment Settings dialog.
 - Add brokerage holdings CSV import (Fidelity format first). Parses positions with cost basis, creates securities by symbol, matches/creates accounts by number or name, upserts PositionSnapshots and PriceHistory. Frontend drop zone on Import tab.
 - Add `account_number` field to Account model for matching brokerage accounts across imports.
 - Add Performance tab to Investments page: alpha, beta, Sharpe ratio, volatility, R², max drawdown, XIRR (personal return), TWR (strategy return), return decomposition (contributions/income/appreciation), and monthly returns table with benchmark comparison.

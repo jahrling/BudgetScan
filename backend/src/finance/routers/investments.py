@@ -48,6 +48,7 @@ from finance.services.investment_import import (
     parse_investment_qif,
     parse_price_csv,
 )
+from finance.services.market_data import fetch_risk_free_rate_bps, fetch_sp500_prices
 from finance.services.lot_engine import TxnInput, rebuild_lots
 
 _MAX_UPLOAD_BYTES = 10 * 1024 * 1024
@@ -974,3 +975,109 @@ async def update_settings(
     await session.commit()
     await session.refresh(settings)
     return settings
+
+
+# ── Market data refresh ──────────────────────────────────────────────────
+
+
+class BenchmarkRefreshResponse(BaseModel):
+    security_id: int
+    security_name: str
+    symbol: str
+    prices_added: int
+    prices_updated: int
+    prices_total: int
+    set_as_benchmark: bool
+    errors: list[str]
+
+
+@router.post("/benchmark/refresh", response_model=BenchmarkRefreshResponse)
+async def refresh_benchmark(session: AsyncSession = Depends(get_session)):
+    """Download S&P 500 (SPY) monthly prices and set as portfolio benchmark."""
+    result = await fetch_sp500_prices()
+    if result.errors and not result.prices:
+        raise HTTPException(502, detail={"errors": result.errors})
+
+    existing = (
+        await session.execute(
+            select(Security).where(Security.symbol == "SPY")
+        )
+    ).scalars().first()
+
+    if existing:
+        security = existing
+    else:
+        security = Security(
+            name="SPDR S&P 500 ETF Trust",
+            symbol="SPY",
+            security_type="etf",
+        )
+        session.add(security)
+        await session.flush()
+
+    existing_prices = {
+        row.date: row
+        for row in (
+            await session.execute(
+                select(PriceHistory).where(PriceHistory.security_id == security.id)
+            )
+        ).scalars().all()
+    }
+
+    prices_added = 0
+    prices_updated = 0
+    for p in result.prices:
+        existing_price = existing_prices.get(p.date)
+        if existing_price is None:
+            session.add(PriceHistory(
+                security_id=security.id,
+                date=p.date,
+                close_micros=p.close_micros,
+                source="stooq",
+            ))
+            prices_added += 1
+        elif existing_price.close_micros != p.close_micros:
+            existing_price.close_micros = p.close_micros
+            prices_updated += 1
+
+    settings = await _get_or_create_settings(session)
+    set_as_benchmark = settings.benchmark_security_id != security.id
+    if set_as_benchmark:
+        settings.benchmark_security_id = security.id
+
+    await session.commit()
+
+    return BenchmarkRefreshResponse(
+        security_id=security.id,
+        security_name=security.name,
+        symbol="SPY",
+        prices_added=prices_added,
+        prices_updated=prices_updated,
+        prices_total=len(result.prices),
+        set_as_benchmark=set_as_benchmark,
+        errors=result.errors,
+    )
+
+
+class RiskFreeRefreshResponse(BaseModel):
+    rate_bps: int
+    rate_pct: float
+    source: str
+
+
+@router.post("/risk-free-rate/refresh", response_model=RiskFreeRefreshResponse)
+async def refresh_risk_free_rate(session: AsyncSession = Depends(get_session)):
+    """Fetch the current 6-month US T-bill yield and save as risk-free rate."""
+    bps, error = await fetch_risk_free_rate_bps()
+    if error:
+        raise HTTPException(502, error)
+
+    settings = await _get_or_create_settings(session)
+    settings.risk_free_annual_bps = bps
+    await session.commit()
+
+    return RiskFreeRefreshResponse(
+        rate_bps=bps,
+        rate_pct=round(bps / 100, 2),
+        source="FRED DGS6MO (6-month T-bill)",
+    )

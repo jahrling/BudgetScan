@@ -73,6 +73,7 @@ backend/src/finance/
     transfer_detector.py — same amount ±3 days, different accounts
     quicken.py         — QIF/QFX parse, candidate matching, import confirm
     finance_qa.py      — RAG: numeric → SQL, free-text → vector retrieval + generation
+    market_data.py     — fetch S&P 500 prices (Stooq) and T-bill risk-free rate (FRED)
 
 frontend/src/
   main.tsx             — BrowserRouter, QueryClient (30s staleTime), AuthGuard, lazy routes
@@ -256,7 +257,7 @@ Import:
 | `/api/import` | `POST /qif`, `POST /qfx`, `POST /confirm` |
 | `/api/export` | `GET /qif` |
 | `/api/auth` | `GET /needs-setup`, `POST /setup`, `POST /login`, `POST /logout`, `GET /me` |
-| `/api/investments` | `GET /overview`, `GET /holdings`, `GET /performance`, `POST /import-qif`, `POST /import/holdings-csv`, `GET /accounts`, lot rebuild, analytics |
+| `/api/investments` | `GET /overview`, `GET /holdings`, `GET /performance`, `POST /import-qif`, `POST /import/holdings-csv`, `POST /benchmark/refresh`, `POST /risk-free-rate/refresh`, `GET /accounts`, lot rebuild, analytics |
 | `/api/statement-scans` | `POST /` upload, `GET /:id`, `GET /:id/file`, `GET /:id/preview`, `POST /:id/reprocess`, `POST /:id/materialize` |
 
 ## Query Cache Keys

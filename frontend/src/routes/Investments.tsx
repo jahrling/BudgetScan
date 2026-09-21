@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, FileImage, FileSpreadsheet, Info, Settings, Upload } from "lucide-react";
+import { ChevronLeft, FileImage, FileSpreadsheet, Info, RefreshCw, Settings, Upload } from "lucide-react";
 import { Layout } from "../components/Layout";
 import { SegmentedControl } from "../components/ui/segmented-control";
 import { Button } from "../components/ui/button";
@@ -844,6 +844,10 @@ function InvestmentSettingsDialog({
   const [riskFree, setRiskFree] = useState("0");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [refreshingBenchmark, setRefreshingBenchmark] = useState(false);
+  const [benchmarkStatus, setBenchmarkStatus] = useState<string | null>(null);
+  const [refreshingRate, setRefreshingRate] = useState(false);
+  const [rateStatus, setRateStatus] = useState<string | null>(null);
 
   useEffect(() => {
     if (settings) {
@@ -853,6 +857,54 @@ function InvestmentSettingsDialog({
   }, [settings]);
 
   if (!open) return null;
+
+  async function handleRefreshBenchmark() {
+    setRefreshingBenchmark(true);
+    setBenchmarkStatus(null);
+    setSaveError(null);
+    try {
+      const res = await api.post<{
+        security_id: number;
+        prices_added: number;
+        prices_updated: number;
+        prices_total: number;
+        set_as_benchmark: boolean;
+      }>("/investments/benchmark/refresh");
+      setBenchmarkId(res.security_id);
+      const parts = [`${res.prices_added} new`];
+      if (res.prices_updated) parts.push(`${res.prices_updated} updated`);
+      parts.push(`(${res.prices_total} total)`);
+      setBenchmarkStatus(
+        `SPY: ${parts.join(", ")}${res.set_as_benchmark ? " — set as benchmark" : ""}`
+      );
+      qc.invalidateQueries({ queryKey: ["investments", "settings"] });
+      qc.invalidateQueries({ queryKey: ["investments", "performance"] });
+      qc.invalidateQueries({ queryKey: ["investments", "securities"] });
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Benchmark refresh failed");
+    } finally {
+      setRefreshingBenchmark(false);
+    }
+  }
+
+  async function handleRefreshRate() {
+    setRefreshingRate(true);
+    setRateStatus(null);
+    setSaveError(null);
+    try {
+      const res = await api.post<{ rate_bps: number; rate_pct: number; source: string }>(
+        "/investments/risk-free-rate/refresh"
+      );
+      setRiskFree(String(res.rate_bps));
+      setRateStatus(`${res.rate_pct}% (${res.rate_bps} bps) — ${res.source}`);
+      qc.invalidateQueries({ queryKey: ["investments", "settings"] });
+      qc.invalidateQueries({ queryKey: ["investments", "performance"] });
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Rate refresh failed");
+    } finally {
+      setRefreshingRate(false);
+    }
+  }
 
   async function handleSave() {
     setSaving(true);
@@ -881,20 +933,38 @@ function InvestmentSettingsDialog({
             Benchmark security
             <InfoTip text="The index fund or ETF to compare your portfolio against (e.g. a total market fund). Used to compute alpha, beta, and Sharpe ratio." />
           </label>
-          <Select
-            value={String(benchmarkId)}
-            onChange={(e) => setBenchmarkId(e.target.value ? Number(e.target.value) : "")}
-          >
-            <option value="">None</option>
-            {securities.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.symbol ? `${s.symbol} — ${s.name}` : s.name}
-              </option>
-            ))}
-          </Select>
-          <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-            Pick a security that has price history uploaded (e.g. via CSV).
-          </p>
+          <div className="flex gap-2 items-center">
+            <Select
+              value={String(benchmarkId)}
+              onChange={(e) => setBenchmarkId(e.target.value ? Number(e.target.value) : "")}
+              className="flex-1"
+            >
+              <option value="">None</option>
+              {securities.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.symbol ? `${s.symbol} — ${s.name}` : s.name}
+                </option>
+              ))}
+            </Select>
+            <Button
+              variant="ghost"
+              onClick={handleRefreshBenchmark}
+              disabled={refreshingBenchmark}
+              title="Download S&P 500 (SPY) price history"
+            >
+              <RefreshCw className={cn("h-3.5 w-3.5", refreshingBenchmark && "animate-spin")} />
+              <span className="ml-1 text-xs">
+                {refreshingBenchmark ? "Fetching..." : "S&P 500"}
+              </span>
+            </Button>
+          </div>
+          {benchmarkStatus ? (
+            <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">{benchmarkStatus}</p>
+          ) : (
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+              Pick a security with price history, or click S&P 500 to download SPY data automatically.
+            </p>
+          )}
         </div>
 
         <div>
@@ -902,15 +972,31 @@ function InvestmentSettingsDialog({
             Risk-free rate (bps)
             <InfoTip text="Annual risk-free rate in basis points (100 bps = 1%). Used in Sharpe ratio calculation. Typical value: 400-525 for current T-bill rates." />
           </label>
-          <input
-            type="number"
-            min={0}
-            max={2000}
-            step={25}
-            value={riskFree}
-            onChange={(e) => setRiskFree(e.target.value)}
-            className="rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2.5 py-1.5 text-sm text-gray-900 dark:text-gray-100 w-28"
-          />
+          <div className="flex gap-2 items-center">
+            <input
+              type="number"
+              min={0}
+              max={2000}
+              step={25}
+              value={riskFree}
+              onChange={(e) => setRiskFree(e.target.value)}
+              className="rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2.5 py-1.5 text-sm text-gray-900 dark:text-gray-100 w-28"
+            />
+            <Button
+              variant="ghost"
+              onClick={handleRefreshRate}
+              disabled={refreshingRate}
+              title="Fetch current 6-month US T-bill yield"
+            >
+              <RefreshCw className={cn("h-3.5 w-3.5", refreshingRate && "animate-spin")} />
+              <span className="ml-1 text-xs">
+                {refreshingRate ? "Fetching..." : "T-bill rate"}
+              </span>
+            </Button>
+          </div>
+          {rateStatus && (
+            <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">{rateStatus}</p>
+          )}
         </div>
 
         {saveError && (
