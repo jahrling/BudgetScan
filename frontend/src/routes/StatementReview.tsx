@@ -70,10 +70,21 @@ export default function StatementReview() {
   const [initialized, setInitialized] = useState(false);
 
   useEffect(() => {
-    if (accountId === null && investmentAccounts.length === 1) {
+    if (accountId !== null) return;
+    if (preview?.account_name && investmentAccounts.length > 0) {
+      const ocrName = preview.account_name.toLowerCase();
+      const match = investmentAccounts.find(
+        (a) => a.name.toLowerCase().includes(ocrName) || ocrName.includes(a.name.toLowerCase()),
+      );
+      if (match) {
+        setAccountId(match.id);
+        return;
+      }
+    }
+    if (investmentAccounts.length === 1) {
       setAccountId(investmentAccounts[0].id);
     }
-  }, [investmentAccounts, accountId]);
+  }, [investmentAccounts, accountId, preview]);
 
   useEffect(() => {
     if (!preview || initialized) return;
@@ -178,6 +189,42 @@ export default function StatementReview() {
           Review statement
         </h1>
 
+        {/* Account & date */}
+        <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 space-y-3">
+          <div>
+            <Label className="text-xs text-gray-500">Account</Label>
+            <Select
+              value={accountId ?? ""}
+              onChange={(e) =>
+                setAccountId(e.target.value ? Number(e.target.value) : null)
+              }
+            >
+              <option value="" disabled>
+                Select account...
+              </option>
+              {investmentAccounts.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </Select>
+            {preview.account_name && (
+              <p className="text-xs text-gray-400 mt-1">
+                OCR detected: {preview.account_name}
+              </p>
+            )}
+          </div>
+          <div>
+            <Label className="text-xs text-gray-500">Statement date</Label>
+            <Input
+              type="date"
+              value={asOf}
+              onChange={(e) => setAsOf(e.target.value)}
+              className="h-9 text-sm"
+            />
+          </div>
+        </div>
+
         {/* Statement preview */}
         <div>
           <button
@@ -207,42 +254,6 @@ export default function StatementReview() {
                 imageExpanded ? "max-h-[80vh]" : "max-h-32"
               }`}
             />
-          )}
-        </div>
-
-        {/* Account & date */}
-        <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3 space-y-3">
-          <div>
-            <Label className="text-xs text-gray-500">Account</Label>
-            <Select
-              value={accountId ?? ""}
-              onChange={(e) =>
-                setAccountId(e.target.value ? Number(e.target.value) : null)
-              }
-            >
-              <option value="" disabled>
-                Select account...
-              </option>
-              {investmentAccounts.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                </option>
-              ))}
-            </Select>
-          </div>
-          <div>
-            <Label className="text-xs text-gray-500">Statement date</Label>
-            <Input
-              type="date"
-              value={asOf}
-              onChange={(e) => setAsOf(e.target.value)}
-              className="h-9 text-sm"
-            />
-          </div>
-          {preview.account_name && (
-            <p className="text-xs text-gray-400">
-              OCR detected: {preview.account_name}
-            </p>
           )}
         </div>
 

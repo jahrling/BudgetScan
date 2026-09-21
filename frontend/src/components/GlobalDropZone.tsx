@@ -100,6 +100,8 @@ export function GlobalDropZone({ children }: { children: ReactNode }) {
       const file = e.dataTransfer?.files[0];
       if (!file) return;
 
+      if (location.pathname === "/investments") return;
+
       const route = routeForFile(file);
       if (!route) {
         setUploadError(`Unsupported file type: ${fileExtension(file.name) || file.type || "unknown"}`);
@@ -107,7 +109,6 @@ export function GlobalDropZone({ children }: { children: ReactNode }) {
       }
 
       if (route === "import") {
-        if (location.pathname === "/investments") return;
         setPendingFile(file);
         if (location.pathname !== "/sync") navigate("/sync");
       } else if (route === "receipt") {
