@@ -6,6 +6,9 @@ Read `ARCHITECTURE.md` first. It has entity relationships, directory layout, and
 compressed call-chain flows for every feature. This should tell you WHERE to look
 without needing to scan the repo.
 
+Privacy and data-handling rules live in `SECURITY.md`. Read it before any
+session that touches financial data, imports, or scripts that query the database.
+
 System-level topology (TheRig, Tailscale, network config) lives in
 `INFRA.private.md` (gitignored). Only read it for infra/deploy questions.
 
@@ -24,6 +27,20 @@ System-level topology (TheRig, Tailscale, network config) lives in
 - Build: `cd frontend && npx vite build`
 - No test suite yet.
 
+## Documentation requirements
+
+Every meaningful change must be documented before reporting the task as done:
+
+- **CHANGELOG.md** — append an entry for every feature, fix, or refactoring.
+  Group entries under a date header (`## YYYY-MM-DD`). Each entry is one line:
+  what changed and why, not how. Keep it human-readable, not a git log mirror.
+- **ARCHITECTURE.md** — update when a change adds/removes entities, endpoints,
+  or alters the directory layout or call-chain flows. Small bug fixes don't
+  need an architecture update.
+- **GitHub Issues** — use only for deferred work: bugs noticed but not fixed now,
+  features to come back to. Don't create an Issue for work being done in the
+  current session. Close Issues in the commit message (`Fixes #N`) when resolved.
+
 ## Conventions
 
 - All money values are stored and passed as integer cents (`amount_cents`, `unit_price_cents`).
@@ -32,31 +49,18 @@ System-level topology (TheRig, Tailscale, network config) lives in
 - Components use Tailwind utility classes directly, no CSS modules.
 - Backend schemas split into Read/Create/Update DTOs in `backend/src/finance/schemas/`.
 
-## Public repo — sensitive data rules
+## Security & privacy
 
-This is a public GitHub repo. Never commit:
-- `.env`, database files, QFX/QIF exports, receipt images
-- API keys, tokens, Tailscale hostnames beyond what's already in ARCHITECTURE.md
-- Real transaction data or financial details
+This is a public GitHub repo. Full rules live in `SECURITY.md` — read it before
+any session that touches financial data, scripts, or imports. Key points:
 
-### QIF/QFX exports and Claude context
-
-Quicken exports contain PII that enters Claude's context when read: real account
-names with partial account numbers, employer names (401k), beneficiary names
-(529), credit card product names, and transaction details. This is sometimes
-unavoidable — Claude needs to see the data to build the parser — but the risk is
-that findings, plans, or test fixtures written during that session carry the PII
-into committed files.
-
-When working with a real export:
-- **Before committing**, grep the diff for account numbers (`XX\d{3,}`), employer
-  names, family names, and any string that came from the export rather than from
-  code. The `retype_accounts.py` incident showed this leaks into docs, handoffs,
-  and test fixtures — not just data files.
-- **Test fixtures must be synthetic.** Don't copy real account names into
-  parametrized tests; invent names that exercise the same code paths.
-- **Findings and plan docs** should describe account *types* and *counts*, not
-  real names or numbers. Write "two HSA accounts, probable duplicates" not
-  "HSA Fidelity Go XX0882 appears twice."
-- **Handoff docs** are especially risky — they summarize real-data exploration
-  and tend to quote specifics for the next session's benefit. Scrub before commit.
+- **Never commit** `.env`, database files, QFX/QIF exports, receipt images, API
+  keys, tokens, or real transaction data.
+- **Never read** financial data files directly (QIF, QFX, `.db`, receipts,
+  statements, anything under `data/` or `data-root/`). Use scripts that redact
+  output before printing.
+- **Scripts must redact** account numbers and names before any `print()` that
+  Claude might see. Follow the `_redact()` pattern in
+  `find_duplicate_accounts.py`.
+- **Test fixtures must be synthetic.** No real account names or numbers.
+- **Docs and findings** describe account *types* and *counts*, not real names.

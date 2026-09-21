@@ -31,6 +31,26 @@ Merchant (name, normalized_name, default_category_id FK → Category)
 Receipt (file_path, sha256 unique, ocr_status, ocr_raw_json)
 
 MemorizedRule (payee, normalized_payee, category_id, status: active|draft|inactive)
+
+Security (symbol, name, security_type, is_cash_equivalent, benchmark_security_id FK → self)
+  └─< PriceHistory (security_id FK, as_of, close_micros, source)
+
+Account
+  └─< InvestmentTransaction (account_id FK, security_id FK → Security)
+        ├── action: buy|sell|dividend|reinvest_dividend|... (see INVESTMENT_ACTIONS)
+        ├── trade_date, quantity_micros, price_micros, amount_cents, fee_cents
+        ├── external_id (unique per account), source, memo
+        └── linked_transaction_id FK → Transaction (cash boundary crossing)
+  └─< Lot (account_id FK, security_id FK)
+        ├── opened_by_id FK → InvestmentTransaction, open_date, quantity_micros, cost_basis_cents
+        ├── is_reinvestment, is_closed
+        └─< LotDisposal (lot_id FK, closed_by_id FK → InvestmentTransaction, quantity_micros, proceeds_cents)
+  └─< PositionSnapshot (account_id FK, security_id FK, as_of, quantity_micros, market_value_cents, source)
+
+InvestmentSettings (key unique, value — portfolio-level config like benchmark)
+
+StatementScan (file_path, sha256 unique, account_id FK nullable, as_of, ocr_status, ocr_raw_json)
+  — input: image (JPG/PNG) or PDF; PDF pages rendered to images via PyMuPDF before OCR
 ```
 
 LineItems have no account — inherited from parent Transaction. Transaction.category_id is denormalized from its single LineItem (null when split).
@@ -170,6 +190,30 @@ POST /transfers/detect → same |amount|, different accounts, posted_at ±3 days
   → links pair via transfer_pair_id (= smaller txn.id)
 ```
 
+### Statement OCR (image or PDF)
+```
+Upload:
+  → file picker (JPG/PNG/PDF) → POST /api/statement-scans
+      → store_upload: validate (Pillow for images, PyMuPDF for PDFs), dedupe by sha256
+      → background processing → ocr_raw_json:
+        - Images: preprocess → Ollama vision call
+        - PDFs (text-based, ≥200 chars): extract text via PyMuPDF → Ollama text model
+        - PDFs (scanned/image): render pages to JPEG → vision call per page → merge
+  → StatementProcessing: poll ocr_status → redirect to review on "done"
+  → StatementReview: editable holdings table, account/date pickers
+      → POST /api/statement-scans/{id}/materialize → PositionSnapshot rows (source="ocr")
+```
+
+### Investment QIF Import
+```
+Import:
+  → file drop or picker → POST /api/investments/import-qif
+      → parse !Account blocks → auto-create/retype accounts
+      → parse investment transactions → dedupe by external_id per account
+      → rebuild lots via lot engine (FIFO)
+  → response: created/skipped/error counts
+```
+
 ## API Routes
 
 | Prefix | Key endpoints |
@@ -186,6 +230,8 @@ POST /transfers/detect → same |amount|, different accounts, posted_at ±3 days
 | `/api/import` | `POST /qif`, `POST /qfx`, `POST /confirm` |
 | `/api/export` | `GET /qif` |
 | `/api/auth` | `GET /needs-setup`, `POST /setup`, `POST /login`, `POST /logout`, `GET /me` |
+| `/api/investments` | `GET /overview`, `GET /holdings`, `POST /import-qif`, `GET /accounts`, lot rebuild, analytics |
+| `/api/statement-scans` | `POST /` upload, `GET /:id`, `GET /:id/file`, `GET /:id/preview`, `POST /:id/reprocess`, `POST /:id/materialize` |
 
 ## Query Cache Keys
 

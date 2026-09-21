@@ -138,6 +138,47 @@ async def call_ollama_vision(
     return str(data.get("response", ""))
 
 
+async def call_ollama_text(
+    prompt: str,
+    *,
+    model: str | None = None,
+) -> str:
+    """Call Ollama with a text-only prompt. Returns the raw model response text."""
+    model_name = model or settings.ollama_text_model
+    url = f"{settings.ollama_url.rstrip('/')}/api/generate"
+    payload = {
+        "model": model_name,
+        "prompt": prompt,
+        "stream": False,
+        "format": "json",
+        "options": {"temperature": 0.1},
+    }
+    async with httpx.AsyncClient(timeout=settings.ollama_timeout_seconds) as client:
+        resp = await client.post(url, json=payload)
+        resp.raise_for_status()
+        data = resp.json()
+    return str(data.get("response", ""))
+
+
+def pdf_to_page_images(raw: bytes, *, dpi: int = 200) -> list[bytes]:
+    """Render each page of a PDF to JPEG bytes using PyMuPDF."""
+    import fitz
+
+    doc = fitz.open(stream=raw, filetype="pdf")
+    pages: list[bytes] = []
+    zoom = dpi / 72.0
+    mat = fitz.Matrix(zoom, zoom)
+    for page in doc:
+        pix = page.get_pixmap(matrix=mat)
+        pages.append(pix.tobytes("jpeg"))
+    doc.close()
+    return pages
+
+
+def is_pdf(raw: bytes) -> bool:
+    return raw[:5] == b"%PDF-"
+
+
 async def ocr_image_bytes(
     raw: bytes,
     *,
@@ -161,6 +202,99 @@ async def ocr_image_bytes(
                 raise OCRError(f"Could not parse JSON after retry. Last reply: {text[:200]}")
             continue
     raise OCRError(f"Unexpected OCR loop exit. Last reply: {last_text[:200]}")
+
+
+MIN_TEXT_CHARS = 200
+
+
+def extract_pdf_text(raw: bytes) -> str:
+    """Extract text from all pages of a PDF. Returns empty string if no text layer."""
+    import fitz
+
+    doc = fitz.open(stream=raw, filetype="pdf")
+    parts: list[str] = []
+    for page in doc:
+        parts.append(page.get_text())
+    doc.close()
+    return "\n".join(parts)
+
+
+async def parse_pdf_text(
+    text: str,
+    *,
+    prompt: str | None = None,
+    model: str | None = None,
+) -> dict[str, Any]:
+    """Send extracted PDF text to the text LLM for structured extraction."""
+    full_prompt = (prompt or "") + "\n\nHere is the statement text:\n\n" + text
+    last_reply = ""
+    for attempt in range(2):
+        reply = await call_ollama_text(full_prompt, model=model)
+        last_reply = reply
+        try:
+            return extract_json(reply)
+        except OCRError:
+            if attempt == 1:
+                logger.warning("PDF text parse failed twice; last reply=%r", reply[:500])
+                raise OCRError(f"Could not parse JSON from PDF text after retry. Last reply: {reply[:200]}")
+    raise OCRError(f"Unexpected parse loop exit. Last reply: {last_reply[:200]}")
+
+
+async def ocr_pdf_bytes(
+    raw: bytes,
+    *,
+    prompt: str | None = None,
+    text_prompt: str | None = None,
+    model: str | None = None,
+) -> tuple[dict[str, Any], str]:
+    """Extract holdings from a PDF. Tries text extraction first; falls back to vision OCR.
+
+    Returns (parsed_dict, method) where method is "text" or "vision".
+    """
+    pdf_text = extract_pdf_text(raw)
+
+    if len(pdf_text.strip()) >= MIN_TEXT_CHARS:
+        logger.info("PDF has %d chars of extractable text; using text model", len(pdf_text.strip()))
+        result = await parse_pdf_text(pdf_text, prompt=text_prompt or prompt, model=model)
+        return result, "text"
+
+    logger.info("PDF has little/no text (%d chars); falling back to vision OCR", len(pdf_text.strip()))
+    pages = pdf_to_page_images(raw)
+    if not pages:
+        raise OCRError("PDF has no pages")
+
+    all_results: list[dict[str, Any]] = []
+    for i, jpeg in enumerate(pages):
+        parsed = None
+        for attempt in range(2):
+            text = await call_ollama_vision(jpeg, prompt=prompt, model=model)
+            try:
+                parsed = extract_json(text)
+                break
+            except OCRError:
+                if attempt == 1:
+                    logger.warning("PDF page %d JSON parse failed twice; last reply=%r", i, text[:500])
+        if parsed is not None:
+            all_results.append(parsed)
+
+    if not all_results:
+        raise OCRError("No pages produced parseable JSON")
+
+    return _merge_page_results(all_results), "vision"
+
+
+def _merge_page_results(results: list[dict[str, Any]]) -> dict[str, Any]:
+    """Combine OCR results from multiple PDF pages into one."""
+    merged: dict[str, Any] = {}
+    all_holdings: list[dict[str, Any]] = []
+    for r in results:
+        if not merged.get("account_name") and r.get("account_name"):
+            merged["account_name"] = r["account_name"]
+        if not merged.get("statement_date") and r.get("statement_date"):
+            merged["statement_date"] = r["statement_date"]
+        all_holdings.extend(r.get("holdings") or [])
+    merged["holdings"] = all_holdings
+    return merged
 
 
 async def ocr_receipt_bytes(raw: bytes, *, model: str | None = None) -> dict[str, Any]:

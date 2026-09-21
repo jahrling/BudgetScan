@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { AlertTriangle, Loader2 } from "lucide-react";
+import { AlertTriangle, FileText, Loader2 } from "lucide-react";
 import { Layout } from "../components/Layout";
 import { Button } from "../components/ui/button";
 import {
@@ -10,6 +10,28 @@ import {
 } from "../hooks/useStatementScans";
 
 const POLL_TIMEOUT_MS = 120_000;
+
+function isPdf(scan: { original_filename: string }) {
+  return scan.original_filename.toLowerCase().endsWith(".pdf");
+}
+
+function StatementPreview({ scan }: { scan: { id: number; original_filename: string } }) {
+  if (isPdf(scan)) {
+    return (
+      <div className="flex flex-col items-center justify-center rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-6 max-h-64 mx-auto">
+        <FileText className="h-12 w-12 text-gray-400 mb-2" />
+        <p className="text-sm text-gray-500 dark:text-gray-400">{scan.original_filename}</p>
+      </div>
+    );
+  }
+  return (
+    <img
+      src={statementImageUrl(scan.id)}
+      alt="Statement"
+      className="rounded-lg border border-gray-200 dark:border-gray-700 max-h-64 mx-auto"
+    />
+  );
+}
 
 export default function StatementProcessing() {
   const { id } = useParams<{ id: string }>();
@@ -75,11 +97,7 @@ export default function StatementProcessing() {
             </div>
           </div>
 
-          <img
-            src={statementImageUrl(scan.id)}
-            alt="Statement"
-            className="rounded-lg border border-gray-200 dark:border-gray-700 max-h-64 mx-auto"
-          />
+          <StatementPreview scan={scan} />
 
           <div className="flex gap-2">
             <Button
@@ -107,11 +125,9 @@ export default function StatementProcessing() {
   return (
     <Layout>
       <div className="text-center">
-        <img
-          src={statementImageUrl(scan.id)}
-          alt="Statement"
-          className="rounded-lg border border-gray-200 dark:border-gray-700 max-h-72 mx-auto mb-4"
-        />
+        <div className="mb-4">
+          <StatementPreview scan={scan} />
+        </div>
         <div className="flex items-center justify-center gap-2 text-gray-600 dark:text-gray-400">
           <Loader2 className="h-5 w-5 animate-spin" />
           <span className="text-sm">Reading statement...</span>

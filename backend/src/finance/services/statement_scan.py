@@ -23,16 +23,11 @@ from finance.services import ocr as ocr_service
 
 logger = logging.getLogger(__name__)
 
-ALLOWED_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"}
+ALLOWED_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif", ".pdf"}
 
 MICROS = 1_000_000
 
-STATEMENT_PROMPT = """You are an investment statement parser.
-
-Look at this brokerage/retirement account statement image and extract the
-holdings table as a single JSON object:
-
-{
+_STATEMENT_SCHEMA = """{
   "account_name": "string or null",
   "statement_date": "YYYY-MM-DD or null",
   "holdings": [
@@ -45,11 +40,9 @@ holdings table as a single JSON object:
       "cost_basis": <number, total in dollars, or null>
     }
   ]
-}
+}"""
 
-Example output for a statement with three holdings:
-
-{
+_STATEMENT_EXAMPLE = """{
   "account_name": "Brokerage Account",
   "statement_date": "2025-06-30",
   "holdings": [
@@ -57,23 +50,52 @@ Example output for a statement with three holdings:
     {"symbol": "VXUS", "name": "Vanguard Total Intl Stock ETF", "quantity": 200.0, "price": 62.15, "market_value": 12430.00, "cost_basis": 11800.00},
     {"symbol": null, "name": "Fidelity Growth Fund", "quantity": 45.123, "price": 88.50, "market_value": 3993.39, "cost_basis": null}
   ]
-}
+}"""
 
-Rules:
+_STATEMENT_RULES = """Rules:
 - JSON only. No commentary, no markdown fences.
 - Dollar amounts are in dollars (e.g. 12345.67, not cents).
 - Quantity is number of shares/units (can be fractional).
-- If a field is illegible, use null. Do not invent values.
-- Include every distinct holding row visible in the statement.
+- If a field is missing or unclear, use null. Do not invent values.
+- Include every distinct holding row in the statement.
 - Exclude rows labeled "Total", "Subtotal", "Account Summary", or any
   aggregate/summary line.
 - Include cash, money market, and sweep account balances as holdings
   (quantity=1, price=market_value for cash positions).
-- For mutual funds without a ticker, use the fund name and leave symbol null.
+- For mutual funds without a ticker, use the fund name and leave symbol null."""
+
+STATEMENT_PROMPT = f"""You are an investment statement parser.
+
+Look at this brokerage/retirement account statement image and extract the
+holdings table as a single JSON object:
+
+{_STATEMENT_SCHEMA}
+
+Example output for a statement with three holdings:
+
+{_STATEMENT_EXAMPLE}
+
+{_STATEMENT_RULES}
+"""
+
+STATEMENT_TEXT_PROMPT = f"""You are an investment statement parser.
+
+Parse the following brokerage/retirement account statement text and extract the
+holdings table as a single JSON object:
+
+{_STATEMENT_SCHEMA}
+
+Example output for a statement with three holdings:
+
+{_STATEMENT_EXAMPLE}
+
+{_STATEMENT_RULES}
 """
 
 
-def _ext_for(filename: str, content_type: str | None) -> str:
+def _ext_for(filename: str, content_type: str | None, raw: bytes | None = None) -> str:
+    if raw and ocr_service.is_pdf(raw):
+        return ".pdf"
     suffix = Path(filename).suffix.lower()
     if suffix in ALLOWED_EXTS:
         return ".jpg" if suffix == ".jpeg" else suffix
@@ -125,19 +147,33 @@ async def store_upload(
     content_type: str | None,
 ) -> tuple[StatementScan, bool]:
     if len(raw) > settings.max_receipt_upload_bytes:
-        raise HTTPException(status_code=413, detail="Statement image exceeds 10 MB limit")
+        raise HTTPException(status_code=413, detail="Statement file exceeds 10 MB limit")
     if not raw:
         raise HTTPException(status_code=400, detail="Empty upload")
 
-    try:
-        from PIL import Image, UnidentifiedImageError
+    if ocr_service.is_pdf(raw):
+        try:
+            import fitz
+            doc = fitz.open(stream=raw, filetype="pdf")
+            if doc.page_count == 0:
+                raise HTTPException(status_code=400, detail="PDF has no pages")
+            doc.close()
+        except Exception as exc:
+            if isinstance(exc, HTTPException):
+                raise
+            raise HTTPException(
+                status_code=400, detail=f"Upload is not a valid PDF: {exc}"
+            ) from exc
+    else:
+        try:
+            from PIL import Image, UnidentifiedImageError
 
-        with Image.open(io.BytesIO(raw)) as probe:
-            probe.verify()
-    except (UnidentifiedImageError, OSError, ValueError) as exc:
-        raise HTTPException(
-            status_code=400, detail=f"Upload is not a valid image: {exc}"
-        ) from exc
+            with Image.open(io.BytesIO(raw)) as probe:
+                probe.verify()
+        except (UnidentifiedImageError, OSError, ValueError) as exc:
+            raise HTTPException(
+                status_code=400, detail=f"Upload is not a valid image: {exc}"
+            ) from exc
 
     digest = hashlib.sha256(raw).hexdigest()
 
@@ -148,7 +184,7 @@ async def store_upload(
     if found is not None:
         return found, False
 
-    ext = _ext_for(original_filename, content_type)
+    ext = _ext_for(original_filename, content_type, raw)
     path = _storage_path(digest, ext)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(raw)
@@ -178,11 +214,16 @@ async def run_ocr(session: AsyncSession, scan_id: int) -> StatementScan:
     try:
         if not path.exists():
             raise ocr_service.OCRError(f"Statement file missing on disk: {path}")
-        parsed = await ocr_service.ocr_image_bytes(
-            path.read_bytes(), prompt=STATEMENT_PROMPT
-        )
+        raw = path.read_bytes()
+        if ocr_service.is_pdf(raw):
+            parsed, method = await ocr_service.ocr_pdf_bytes(
+                raw, prompt=STATEMENT_PROMPT, text_prompt=STATEMENT_TEXT_PROMPT,
+            )
+        else:
+            parsed = await ocr_service.ocr_image_bytes(raw, prompt=STATEMENT_PROMPT)
+            method = "vision"
         scan.ocr_raw_json = json.dumps(parsed)
-        scan.ocr_model = settings.ollama_vision_model
+        scan.ocr_model = settings.ollama_text_model if method == "text" else settings.ollama_vision_model
         scan.ocr_status = "done"
         scan.ocr_error = None
     except Exception as exc:

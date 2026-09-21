@@ -4,6 +4,7 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
+  FileText,
   Loader2,
   Plus,
   Trash2,
@@ -16,6 +17,7 @@ import { Select } from "../components/ui/select";
 import { MoneyInput, formatCents } from "../components/MoneyInput";
 import {
   statementImageUrl,
+  useStatementScan,
   useStatementPreview,
   useMaterializeStatement,
 } from "../hooks/useStatementScans";
@@ -45,7 +47,9 @@ export default function StatementReview() {
   const { id } = useParams<{ id: string }>();
   const scanId = id ? Number(id) : null;
   const navigate = useNavigate();
+  const { data: scan } = useStatementScan(scanId);
   const { data: preview, isLoading, isError } = useStatementPreview(scanId);
+  const scanIsPdf = scan?.original_filename?.toLowerCase().endsWith(".pdf") ?? false;
   const { data: accounts = [] } = useAccounts();
   const submit = useMaterializeStatement();
 
@@ -174,27 +178,36 @@ export default function StatementReview() {
           Review statement
         </h1>
 
-        {/* Statement image */}
+        {/* Statement preview */}
         <div>
           <button
             type="button"
             onClick={() => setImageExpanded(!imageExpanded)}
             className="w-full flex items-center justify-between text-sm text-gray-500 mb-1"
           >
-            <span>Statement image</span>
+            <span>Statement {scanIsPdf ? "file" : "image"}</span>
             {imageExpanded ? (
               <ChevronUp className="h-4 w-4" />
             ) : (
               <ChevronDown className="h-4 w-4" />
             )}
           </button>
-          <img
-            src={statementImageUrl(scanId)}
-            alt="Statement"
-            className={`rounded-lg border border-gray-200 dark:border-gray-700 mx-auto transition-all ${
-              imageExpanded ? "max-h-[80vh]" : "max-h-32"
-            }`}
-          />
+          {scanIsPdf ? (
+            <div className="flex flex-col items-center justify-center rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-4 mx-auto">
+              <FileText className="h-10 w-10 text-gray-400 mb-1" />
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                {scan?.original_filename}
+              </p>
+            </div>
+          ) : (
+            <img
+              src={statementImageUrl(scanId)}
+              alt="Statement"
+              className={`rounded-lg border border-gray-200 dark:border-gray-700 mx-auto transition-all ${
+                imageExpanded ? "max-h-[80vh]" : "max-h-32"
+              }`}
+            />
+          )}
         </div>
 
         {/* Account & date */}
