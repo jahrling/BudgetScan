@@ -12,4 +12,5 @@ class Account(Base):
     name: Mapped[str] = mapped_column(String(128))
     type: Mapped[str] = mapped_column(String(32))
     quicken_id: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    account_number: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     currency: Mapped[str] = mapped_column(String(3), default="USD")

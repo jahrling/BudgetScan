@@ -115,6 +115,7 @@ export interface Account {
   name: string;
   type: string;
   quicken_id: string | null;
+  account_number: string | null;
   currency: string;
   created_at: string;
   updated_at: string;
@@ -378,6 +379,44 @@ export interface PositionSnapshot {
   source: string;
   created_at: string;
   updated_at: string;
+}
+
+// ── Performance analytics ───────────────────────────────────────────────
+
+export interface RiskMetrics {
+  beta: number;
+  alpha_monthly: number;
+  alpha_annualized: number;
+  r_squared: number;
+  volatility_annualized: number;
+  sharpe_ratio: number;
+  max_drawdown: number;
+  n_months: number;
+}
+
+export interface MonthlyReturn {
+  date: string;
+  portfolio: number;
+  benchmark: number | null;
+}
+
+export interface ReturnDecomposition {
+  contributions_cents: number;
+  income_cents: number;
+  appreciation_cents: number;
+}
+
+export interface PerformanceData {
+  risk_metrics: RiskMetrics | null;
+  portfolio_return: number | null;
+  benchmark_return: number | null;
+  xirr_return: number | null;
+  decomposition: ReturnDecomposition | null;
+  monthly_returns: MonthlyReturn[];
+  benchmark_name: string | null;
+  benchmark_symbol: string | null;
+  has_benchmark: boolean;
+  error: string | null;
 }
 
 // ── Statement scan domain ────────────────────────────────────────────────

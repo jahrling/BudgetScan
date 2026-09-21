@@ -128,14 +128,40 @@ async def call_ollama_vision(
         "prompt": prompt or PROMPT,
         "images": [b64],
         "stream": False,
-        "format": "json",
         "options": {"temperature": 0.1},
     }
-    async with httpx.AsyncClient(timeout=settings.ollama_timeout_seconds) as client:
-        resp = await client.post(url, json=payload)
-        resp.raise_for_status()
-        data = resp.json()
-    return str(data.get("response", ""))
+    try:
+        async with httpx.AsyncClient(timeout=settings.ollama_timeout_seconds) as client:
+            resp = await client.post(url, json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+    except httpx.HTTPStatusError as exc:
+        status = exc.response.status_code
+        if status == 404:
+            raise OCRError(
+                f"Model '{model_name}' not found in Ollama. "
+                f"Pull it with: ollama pull {model_name}"
+            ) from exc
+        raise OCRError(
+            f"Ollama returned HTTP {status} for model '{model_name}': {exc}"
+        ) from exc
+    except httpx.TimeoutException as exc:
+        raise OCRError(
+            f"Ollama timed out after {settings.ollama_timeout_seconds}s "
+            f"(model: {model_name}). The model may still be loading into memory."
+        ) from exc
+    except httpx.ConnectError as exc:
+        raise OCRError(
+            f"Cannot connect to Ollama at {settings.ollama_url}. "
+            f"Is the Ollama service running?"
+        ) from exc
+    response = str(data.get("response", ""))
+    if not response.strip():
+        raise OCRError(
+            f"Model '{model_name}' returned an empty response. "
+            f"This model may not support vision — check that it has image/vision capabilities."
+        )
+    return response
 
 
 async def call_ollama_text(
@@ -153,10 +179,31 @@ async def call_ollama_text(
         "options": {"temperature": 0.1},
     }
     timeout = httpx.Timeout(settings.ollama_timeout_seconds, connect=30.0)
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        resp = await client.post(url, json=payload)
-        resp.raise_for_status()
-        data = resp.json()
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.post(url, json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+    except httpx.HTTPStatusError as exc:
+        status = exc.response.status_code
+        if status == 404:
+            raise OCRError(
+                f"Model '{model_name}' not found in Ollama. "
+                f"Pull it with: ollama pull {model_name}"
+            ) from exc
+        raise OCRError(
+            f"Ollama returned HTTP {status} for model '{model_name}': {exc}"
+        ) from exc
+    except httpx.TimeoutException as exc:
+        raise OCRError(
+            f"Ollama timed out after {settings.ollama_timeout_seconds}s "
+            f"(model: {model_name}). The model may still be loading into memory."
+        ) from exc
+    except httpx.ConnectError as exc:
+        raise OCRError(
+            f"Cannot connect to Ollama at {settings.ollama_url}. "
+            f"Is the Ollama service running?"
+        ) from exc
     response = str(data.get("response", ""))
     logger.info(
         "call_ollama_text: model=%s, prompt_len=%d, response_len=%d, done=%s",
@@ -194,6 +241,7 @@ async def ocr_image_bytes(
 
     Retries the JSON extraction once if the first reply is unparseable.
     """
+    model_name = model or settings.ollama_vision_model
     jpeg = preprocess_image(raw)
     last_text = ""
     for attempt in range(2):
@@ -203,10 +251,14 @@ async def ocr_image_bytes(
             return extract_json(text)
         except OCRError:
             if attempt == 1:
-                logger.warning("OCR JSON parse failed twice; last reply=%r", text[:500])
-                raise OCRError(f"Could not parse JSON after retry. Last reply: {text[:200]}")
+                snippet = text[:200].strip() if text.strip() else "(empty)"
+                logger.warning("OCR JSON parse failed twice; model=%s, last reply=%r", model_name, text[:500])
+                raise OCRError(
+                    f"Model '{model_name}' did not return valid JSON after 2 attempts. "
+                    f"Last response: {snippet}"
+                )
             continue
-    raise OCRError(f"Unexpected OCR loop exit. Last reply: {last_text[:200]}")
+    raise OCRError(f"Unexpected OCR loop exit (model: {model_name}). Last reply: {last_text[:200]}")
 
 
 MIN_TEXT_CHARS = 200

@@ -269,7 +269,16 @@ export default function StatementReview() {
           </div>
 
           <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm table-fixed">
+              <colgroup>
+                <col />
+                <col className="w-20" />
+                <col className="w-24" />
+                <col className="w-24" />
+                <col className="w-28" />
+                <col className="w-28" />
+                <col className="w-8" />
+              </colgroup>
               <thead>
                 <tr className="bg-gray-50 dark:bg-gray-800 text-left text-xs text-gray-500 dark:text-gray-400">
                   <th className="px-2 py-1.5 font-medium">Security</th>
@@ -277,12 +286,12 @@ export default function StatementReview() {
                   <th className="px-2 py-1.5 font-medium text-right">Qty</th>
                   <th className="px-2 py-1.5 font-medium text-right">Price</th>
                   <th className="px-2 py-1.5 font-medium text-right">
-                    Market Value
+                    Mkt Value
                   </th>
                   <th className="px-2 py-1.5 font-medium text-right">
                     Cost Basis
                   </th>
-                  <th className="px-2 py-1.5 w-8"></th>
+                  <th className="px-2 py-1.5"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
@@ -298,7 +307,7 @@ export default function StatementReview() {
                     <td className="px-2 py-1.5">
                       {pos.matched_security_id ? (
                         <span
-                          className="text-gray-900 dark:text-gray-100"
+                          className="text-gray-900 dark:text-gray-100 truncate block"
                           title={`Matched: ${pos.matched_security_name}`}
                         >
                           {pos.matched_security_name || pos.name}
@@ -310,7 +319,7 @@ export default function StatementReview() {
                             updatePosition(idx, { name: e.target.value })
                           }
                           placeholder="Security name"
-                          className="h-7 text-xs min-w-[120px]"
+                          className="h-7 text-xs w-full"
                         />
                       )}
                     </td>
@@ -323,7 +332,7 @@ export default function StatementReview() {
                           })
                         }
                         placeholder="--"
-                        className="h-7 text-xs w-16"
+                        className="h-7 text-xs w-full"
                       />
                     </td>
                     <td className="px-2 py-1.5">
@@ -336,7 +345,7 @@ export default function StatementReview() {
                           if (m !== null)
                             updatePosition(idx, { quantity_micros: m });
                         }}
-                        className="h-7 text-xs text-right w-20"
+                        className="h-7 text-xs text-right w-full"
                       />
                     </td>
                     <td className="px-2 py-1.5">
@@ -358,7 +367,7 @@ export default function StatementReview() {
                           }
                         }}
                         placeholder="--"
-                        className="h-7 text-xs text-right w-20"
+                        className="h-7 text-xs text-right w-full"
                       />
                     </td>
                     <td className="px-2 py-1.5">
@@ -367,7 +376,7 @@ export default function StatementReview() {
                         onValueChange={(cents) =>
                           updatePosition(idx, { market_value_cents: cents })
                         }
-                        className="h-7 text-xs w-24"
+                        className="h-7 text-xs"
                       />
                     </td>
                     <td className="px-2 py-1.5">
@@ -379,7 +388,7 @@ export default function StatementReview() {
                               cost_basis_cents: cents || null,
                             })
                           }
-                          className="h-7 text-xs w-24"
+                          className="h-7 text-xs"
                         />
                       ) : (
                         <button
@@ -387,7 +396,7 @@ export default function StatementReview() {
                           onClick={() =>
                             updatePosition(idx, { cost_basis_cents: 0 })
                           }
-                          className="h-7 w-24 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 border border-dashed border-gray-300 dark:border-gray-600 rounded-md"
+                          className="h-7 w-full text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 border border-dashed border-gray-300 dark:border-gray-600 rounded-md"
                         >
                           --
                         </button>

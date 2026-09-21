@@ -39,9 +39,12 @@ from finance.services.investment_analytics import (
     get_holdings,
     get_holding_detail,
     get_overview,
+    get_performance,
 )
 from finance.services.investment_import import (
+    HoldingsCSVResult,
     InvestmentParseResult,
+    parse_holdings_csv,
     parse_investment_qif,
     parse_price_csv,
 )
@@ -91,6 +94,72 @@ async def update_security(
     await session.commit()
     await session.refresh(security)
     return security
+
+
+# ── Performance / risk analytics ──────────────────────────────────────────
+
+
+class RiskMetricsResponse(BaseModel):
+    beta: float
+    alpha_monthly: float
+    alpha_annualized: float
+    r_squared: float
+    volatility_annualized: float
+    sharpe_ratio: float
+    max_drawdown: float
+    n_months: int
+
+
+class MonthlyReturnResponse(BaseModel):
+    date: str
+    portfolio: float
+    benchmark: float | None
+
+
+class DecompositionResponse(BaseModel):
+    contributions_cents: int
+    income_cents: int
+    appreciation_cents: int
+
+
+class PerformanceResponse(BaseModel):
+    risk_metrics: RiskMetricsResponse | None
+    portfolio_return: float | None
+    benchmark_return: float | None
+    xirr_return: float | None
+    decomposition: DecompositionResponse | None
+    monthly_returns: list[MonthlyReturnResponse]
+    benchmark_name: str | None
+    benchmark_symbol: str | None
+    has_benchmark: bool
+    error: str | None = None
+
+
+@router.get("/performance", response_model=PerformanceResponse)
+async def performance(
+    account_id: int | None = None,
+    session: AsyncSession = Depends(get_session),
+):
+    data = await get_performance(session, account_id)
+    return PerformanceResponse(
+        risk_metrics=RiskMetricsResponse(**vars(data.risk_metrics)) if data.risk_metrics else None,
+        portfolio_return=data.portfolio_return,
+        benchmark_return=data.benchmark_return,
+        xirr_return=data.xirr_return,
+        decomposition=DecompositionResponse(
+            contributions_cents=data.decomposition.contributions_cents,
+            income_cents=data.decomposition.income_cents,
+            appreciation_cents=data.decomposition.appreciation_cents,
+        ) if data.decomposition else None,
+        monthly_returns=[
+            MonthlyReturnResponse(date=m.date, portfolio=m.portfolio, benchmark=m.benchmark)
+            for m in data.monthly_returns
+        ],
+        benchmark_name=data.benchmark_name,
+        benchmark_symbol=data.benchmark_symbol,
+        has_benchmark=data.has_benchmark,
+        error=data.error,
+    )
 
 
 # ── Aggregate views ───────────────────────────────────────────────────────
@@ -673,6 +742,206 @@ async def import_investment_qif(
         skipped_other=parsed.skipped_count,
         skipped_banking=parsed.skipped_banking_count,
         errors=parsed.errors,
+    )
+
+
+# ── Holdings CSV import ───────────────────────────────────────────────────
+
+
+class HoldingsCSVImportResponse(BaseModel):
+    snapshots_created: int
+    snapshots_updated: int
+    securities_created: int
+    accounts_created: int
+    prices_recorded: int
+    source_format: str
+    as_of: str
+    errors: list[str]
+
+
+@router.post("/import/holdings-csv", response_model=HoldingsCSVImportResponse)
+async def import_holdings_csv(
+    file: UploadFile,
+    as_of: str | None = None,
+    session: AsyncSession = Depends(get_session),
+):
+    """Import holdings from a brokerage CSV (currently supports Fidelity).
+
+    Creates or matches securities by symbol, creates or matches accounts by
+    account number / name, and upserts PositionSnapshots for each holding.
+    Also records current prices in PriceHistory.
+
+    ``as_of`` is the snapshot date (YYYY-MM-DD). Defaults to today.
+    """
+    from datetime import date as date_type
+
+    from finance.models.account import Account
+
+    raw = await file.read(_MAX_UPLOAD_BYTES + 1)
+    if len(raw) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(413, "File too large (10 MB limit)")
+    content = raw.decode("utf-8", errors="replace")
+
+    parsed: HoldingsCSVResult = parse_holdings_csv(content)
+    if not parsed.rows and parsed.errors:
+        raise HTTPException(400, detail={"errors": parsed.errors})
+
+    # Determine snapshot date
+    if as_of:
+        try:
+            snapshot_date = date_type.fromisoformat(as_of)
+        except ValueError:
+            raise HTTPException(400, f"Invalid date format: {as_of}")
+    else:
+        snapshot_date = date_type.today()
+
+    errors = list(parsed.errors)
+
+    # 1. Resolve accounts: match by account_number, then by name, else create
+    existing_accts = (await session.execute(select(Account))).scalars().all()
+    acct_by_number: dict[str, Account] = {}
+    acct_by_name: dict[str, Account] = {}
+    for acct in existing_accts:
+        if acct.account_number:
+            acct_by_number[acct.account_number] = acct
+        acct_by_name[acct.name] = acct
+
+    account_map: dict[tuple[str | None, str | None], int] = {}
+    accounts_created = 0
+
+    for acct_num, acct_name in parsed.accounts_found:
+        if acct_num and acct_num in acct_by_number:
+            matched = acct_by_number[acct_num]
+            account_map[(acct_num, acct_name)] = matched.id
+            continue
+
+        if acct_name and acct_name in acct_by_name:
+            matched = acct_by_name[acct_name]
+            account_map[(acct_num, acct_name)] = matched.id
+            if acct_num and not matched.account_number:
+                matched.account_number = acct_num
+                acct_by_number[acct_num] = matched
+            continue
+
+        name = acct_name or f"Brokerage ({acct_num or 'unknown'})"
+        acct = Account(
+            name=name,
+            type="brokerage",
+            account_number=acct_num,
+        )
+        session.add(acct)
+        await session.flush()
+        account_map[(acct_num, acct_name)] = acct.id
+        acct_by_name[name] = acct
+        if acct_num:
+            acct_by_number[acct_num] = acct
+        accounts_created += 1
+
+    # 2. Resolve securities by symbol (create if new)
+    existing_secs = (await session.execute(select(Security))).scalars().all()
+    sec_by_symbol: dict[str, Security] = {}
+    sec_by_name: dict[str, Security] = {}
+    for sec in existing_secs:
+        if sec.symbol:
+            sec_by_symbol[sec.symbol.upper()] = sec
+        sec_by_name[sec.name] = sec
+
+    securities_created = 0
+
+    # 3. Upsert snapshots and prices
+    snapshots_created = 0
+    snapshots_updated = 0
+    prices_recorded = 0
+
+    for row in parsed.rows:
+        # Resolve account
+        acct_id = account_map.get((row.account_number, row.account_name))
+        if acct_id is None:
+            errors.append(f"Could not resolve account for {row.symbol}")
+            continue
+
+        # Resolve or create security: try symbol, then name (QIF imports key by name)
+        sym_upper = row.symbol.upper()
+        sec = sec_by_symbol.get(sym_upper) or sec_by_name.get(row.description)
+        if sec is None:
+            sec = Security(
+                name=row.description,
+                symbol=row.symbol,
+                security_type=row.security_type,
+                is_cash_equivalent=row.is_cash_equivalent,
+            )
+            session.add(sec)
+            await session.flush()
+            sec_by_symbol[sym_upper] = sec
+            sec_by_name[sec.name] = sec
+            securities_created += 1
+        else:
+            if not sec.symbol and row.symbol:
+                sec.symbol = row.symbol
+                sec_by_symbol[sym_upper] = sec
+
+        # Upsert PositionSnapshot (unique on account_id + security_id + as_of)
+        existing_snap = (
+            await session.execute(
+                select(PositionSnapshot).where(
+                    PositionSnapshot.account_id == acct_id,
+                    PositionSnapshot.security_id == sec.id,
+                    PositionSnapshot.as_of == snapshot_date,
+                )
+            )
+        ).scalar_one_or_none()
+
+        if existing_snap:
+            existing_snap.quantity_micros = row.quantity_micros
+            existing_snap.market_value_cents = row.market_value_cents
+            existing_snap.price_micros = row.price_micros if row.price_micros else None
+            existing_snap.cost_basis_cents = row.cost_basis_cents
+            existing_snap.source = "csv_fidelity"
+            snapshots_updated += 1
+        else:
+            snap = PositionSnapshot(
+                account_id=acct_id,
+                security_id=sec.id,
+                as_of=snapshot_date,
+                quantity_micros=row.quantity_micros,
+                market_value_cents=row.market_value_cents,
+                price_micros=row.price_micros if row.price_micros else None,
+                cost_basis_cents=row.cost_basis_cents,
+                source="csv_fidelity",
+            )
+            session.add(snap)
+            snapshots_created += 1
+
+        # Record price in PriceHistory if we have one
+        if row.price_micros:
+            existing_price = (
+                await session.execute(
+                    select(PriceHistory).where(
+                        PriceHistory.security_id == sec.id,
+                        PriceHistory.date == snapshot_date,
+                    )
+                )
+            ).scalar_one_or_none()
+            if existing_price is None:
+                session.add(PriceHistory(
+                    security_id=sec.id,
+                    date=snapshot_date,
+                    close_micros=row.price_micros,
+                    source="csv_fidelity",
+                ))
+                prices_recorded += 1
+
+    await session.commit()
+
+    return HoldingsCSVImportResponse(
+        snapshots_created=snapshots_created,
+        snapshots_updated=snapshots_updated,
+        securities_created=securities_created,
+        accounts_created=accounts_created,
+        prices_recorded=prices_recorded,
+        source_format=parsed.source_format,
+        as_of=snapshot_date.isoformat(),
+        errors=errors,
     )
 
 

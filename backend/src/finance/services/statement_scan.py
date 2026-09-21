@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from finance.config import settings
 from finance.models.position_snapshot import PositionSnapshot
-from finance.models.security import Security
+from finance.models.security import PriceHistory, Security
 from finance.models.statement_scan import StatementScan
 from finance.services import ocr as ocr_service
 
@@ -420,6 +420,29 @@ async def materialize_snapshots(
         )
         session.add(snap)
         snapshots.append(snap)
+
+    # Write per-share prices to PriceHistory so lot-based holdings can
+    # pick them up for market value calculation.
+    for sec_id, data in resolved.items():
+        price = data.get("price_micros")
+        if price is None or price <= 0:
+            continue
+        existing_price = await session.execute(
+            select(PriceHistory).where(
+                PriceHistory.security_id == sec_id,
+                PriceHistory.date == as_of,
+            )
+        )
+        row = existing_price.scalar_one_or_none()
+        if row is None:
+            session.add(PriceHistory(
+                security_id=sec_id,
+                date=as_of,
+                close_micros=price,
+                source="ocr",
+            ))
+        elif row.source == "ocr":
+            row.close_micros = price
 
     scan.account_id = account_id
     scan.as_of = as_of
