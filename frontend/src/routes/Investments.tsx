@@ -869,7 +869,7 @@ function InvestmentSettingsDialog({
         prices_updated: number;
         prices_total: number;
         set_as_benchmark: boolean;
-      }>("/investments/benchmark/refresh");
+      }>("/investments/benchmark/refresh", {});
       setBenchmarkId(res.security_id);
       const parts = [`${res.prices_added} new`];
       if (res.prices_updated) parts.push(`${res.prices_updated} updated`);
@@ -893,7 +893,7 @@ function InvestmentSettingsDialog({
     setSaveError(null);
     try {
       const res = await api.post<{ rate_bps: number; rate_pct: number; source: string }>(
-        "/investments/risk-free-rate/refresh"
+        "/investments/risk-free-rate/refresh", {}
       );
       setRiskFree(String(res.rate_bps));
       setRateStatus(`${res.rate_pct}% (${res.rate_bps} bps) — ${res.source}`);
