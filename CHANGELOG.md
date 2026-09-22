@@ -1,7 +1,24 @@
 # BudgetScan Changelog
 
+## 2026-09-21
+
+- Add S&P 500 benchmark auto-download: fetches monthly SPY prices from Stooq, creates the security, stores price history, and sets it as portfolio benchmark — all in one click from Investment Settings.
+- Add risk-free rate auto-refresh: fetches current 6-month US T-bill yield from FRED and saves it for Sharpe ratio calculations. Both refresh buttons are in the Investment Settings dialog.
+- Add brokerage holdings CSV import (Fidelity format first). Parses positions with cost basis, creates securities by symbol, matches/creates accounts by number or name, upserts PositionSnapshots and PriceHistory. Frontend drop zone on Import tab.
+- Add `account_number` field to Account model for matching brokerage accounts across imports.
+- Add Performance tab to Investments page: alpha, beta, Sharpe ratio, volatility, R², max drawdown, XIRR (personal return), TWR (strategy return), return decomposition (contributions/income/appreciation), and monthly returns table with benchmark comparison.
+- Upgrade return decomposition display to include a stacked bar visualization showing proportional breakdown of contributions, income, and price appreciation alongside the stat tiles.
+- Add info tooltips to Performance tab metrics (TWR, XIRR, alpha, beta, Sharpe, volatility, R², max drawdown, and decomposition tiles) explaining what each concept means on hover.
+- Add Investment Settings dialog accessible from Performance tab (gear icon + "Configure" link on the no-benchmark banner). Lets you pick a benchmark security and set the risk-free rate.
+- Improve OCR error messages: backend now distinguishes model-not-found, connection failures, timeouts, empty responses, and JSON parse errors with actionable messages including model name. Frontend shows contextual hints for each error type.
+- Fix vision OCR returning empty responses with qwen3.5 models: remove `format: "json"` from Ollama vision calls (constrained JSON decoding breaks multimodal input on some models). The `extract_json` parser already handles freeform replies.
+
 ## 2026-09-20
 
+- Fix Holdings view not showing statement-OCR data: `get_holdings` now falls back to the latest PositionSnapshot when no lots exist for an (account, security) pair; detail view does the same. Also fix stale cache after materialize (query key mismatch).
+- Fix Statement Review table: column headers now align with columns (`table-fixed` + `colgroup`); shorten "Market Value" to "Mkt Value" so columns fit.
+- Fix MoneyInput blocking copy/paste: replace keystroke-interception approach with standard focus/blur editing so Ctrl+C/V and text selection work everywhere (Statement Review, Budgets, SplitEditor, Transactions, Receipt Review).
+- Statement materialize now writes per-share prices to PriceHistory so lot-based holdings show market values without a separate price CSV upload.
 - Statement OCR now accepts PDF uploads: text-based PDFs (downloaded from brokerage) are parsed via text extraction + LLM; scanned/image PDFs fall back to vision OCR.
 - Add `find_duplicate_accounts.py` script to identify and merge duplicate account pairs in the database.
 - Apply `retype_accounts.py` to reclassify 32 accounts from their import-default types to correct types (HSA, 401k, IRA, etc.).

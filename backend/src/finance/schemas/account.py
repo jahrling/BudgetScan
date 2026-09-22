@@ -7,6 +7,7 @@ class AccountCreate(BaseModel):
     name: str
     type: str
     quicken_id: str | None = None
+    account_number: str | None = None
     currency: str = "USD"
 
 
@@ -15,6 +16,7 @@ class AccountRead(BaseModel):
     name: str
     type: str
     quicken_id: str | None
+    account_number: str | None
     currency: str
     created_at: datetime
     updated_at: datetime
@@ -26,4 +28,5 @@ class AccountUpdate(BaseModel):
     name: str | None = None
     type: str | None = None
     quicken_id: str | None = None
+    account_number: str | None = None
     currency: str | None = None

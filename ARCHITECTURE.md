@@ -9,7 +9,7 @@ codebase without reading every file. Updated 2026-09-01.
 ## Entities
 
 ```
-Account (name, type, quicken_id, currency)
+Account (name, type, quicken_id, account_number, currency)
   └─< Transaction (account_id FK)
         ├── merchant_id FK → Merchant (nullable)
         ├── category_id FK → Category (nullable, denormalized from single line item)
@@ -73,6 +73,7 @@ backend/src/finance/
     transfer_detector.py — same amount ±3 days, different accounts
     quicken.py         — QIF/QFX parse, candidate matching, import confirm
     finance_qa.py      — RAG: numeric → SQL, free-text → vector retrieval + generation
+    market_data.py     — fetch S&P 500 prices (Stooq) and T-bill risk-free rate (FRED)
 
 frontend/src/
   main.tsx             — BrowserRouter, QueryClient (30s staleTime), AuthGuard, lazy routes
@@ -214,6 +215,32 @@ Import:
   → response: created/skipped/error counts
 ```
 
+### Performance Analytics
+```
+Performance tab:
+  → usePerformance() → GET /api/investments/performance
+      → get_performance(): aggregate PositionSnapshots by date → portfolio value series
+      → gather cash flows (cash_in/cash_out/shares_in/shares_out) from InvestmentTransaction
+      → monthly_return_series() via Modified Dietz
+      → benchmark returns from PriceHistory (keyed by InvestmentSettings.benchmark_security_id)
+      → compute_risk_metrics(): beta, alpha, R², Sharpe, volatility, max drawdown (requires ≥12 months)
+      → xirr(): money-weighted annualized return
+      → decompose_return(): contributions + income + price appreciation
+  → frontend: stat tiles (TWR, XIRR, benchmark), decomposition row, risk metrics grid, monthly returns table
+```
+
+### Holdings CSV Import (Fidelity, extensible)
+```
+Import:
+  → file drop or picker (.csv) → POST /api/investments/import/holdings-csv
+      → parse_holdings_csv(): detect brokerage from headers (Fidelity first)
+      → per row: resolve Security by symbol (create if new),
+        resolve Account by account_number → name → create
+      → upsert PositionSnapshot (account_id + security_id + as_of),
+        record PriceHistory per security
+  → response: counts (snapshots created/updated, securities, accounts, prices)
+```
+
 ## API Routes
 
 | Prefix | Key endpoints |
@@ -230,7 +257,7 @@ Import:
 | `/api/import` | `POST /qif`, `POST /qfx`, `POST /confirm` |
 | `/api/export` | `GET /qif` |
 | `/api/auth` | `GET /needs-setup`, `POST /setup`, `POST /login`, `POST /logout`, `GET /me` |
-| `/api/investments` | `GET /overview`, `GET /holdings`, `POST /import-qif`, `GET /accounts`, lot rebuild, analytics |
+| `/api/investments` | `GET /overview`, `GET /holdings`, `GET /performance`, `POST /import-qif`, `POST /import/holdings-csv`, `POST /benchmark/refresh`, `POST /risk-free-rate/refresh`, `GET /accounts`, lot rebuild, analytics |
 | `/api/statement-scans` | `POST /` upload, `GET /:id`, `GET /:id/file`, `GET /:id/preview`, `POST /:id/reprocess`, `POST /:id/materialize` |
 
 ## Query Cache Keys

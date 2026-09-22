@@ -77,8 +77,7 @@ export function useMaterializeStatement() {
         body,
       ),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["holdings"] });
-      qc.invalidateQueries({ queryKey: ["overview"] });
+      qc.invalidateQueries({ queryKey: ["investments"] });
       qc.invalidateQueries({ queryKey: ["snapshots"] });
     },
   });

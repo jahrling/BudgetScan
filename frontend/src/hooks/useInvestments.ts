@@ -5,6 +5,7 @@ import type {
   HoldingSummary,
   InvestmentOverview,
   InvestmentSettings,
+  PerformanceData,
   Security,
 } from "../types/models";
 
@@ -40,6 +41,16 @@ export function useSecurities() {
   return useQuery({
     queryKey: ["investments", "securities"],
     queryFn: () => api.get<Security[]>("/investments/securities"),
+  });
+}
+
+export function usePerformance(accountId?: number) {
+  return useQuery({
+    queryKey: ["investments", "performance", { accountId }],
+    queryFn: () => {
+      const params = accountId != null ? `?account_id=${accountId}` : "";
+      return api.get<PerformanceData>(`/investments/performance${params}`);
+    },
   });
 }
 

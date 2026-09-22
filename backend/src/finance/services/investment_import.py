@@ -1,5 +1,5 @@
-"""Investment import: QIF !Type:Invst/Security/Prices parsing, manual snapshots,
-and benchmark CSV upload.
+"""Investment import: QIF !Type:Invst/Security/Prices parsing, brokerage
+holdings CSV parsing, manual snapshots, and benchmark CSV upload.
 
 Fixes F1 (investment records silently dropped) by actually parsing investment
 blocks instead of routing them to a dead-end section kind. Unknown action codes
@@ -11,6 +11,7 @@ QIF action code mapping follows plan §4.2. The Cash action is not one action
 
 from __future__ import annotations
 
+import csv
 import hashlib
 import logging
 import re
@@ -544,6 +545,201 @@ def _parse_price_line(line: str, result: InvestmentParseResult) -> None:
 class PriceCSVResult:
     prices: list[PriceCandidate] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Brokerage holdings CSV parser
+# ---------------------------------------------------------------------------
+
+_FIDELITY_REQUIRED_HEADERS = {
+    "symbol", "description", "quantity", "last price", "current value",
+    "cost basis total", "type",
+}
+
+_FIDELITY_TYPE_MAP: dict[str, tuple[str, bool]] = {
+    "cash": ("cash", True),
+    "money market": ("cash", True),
+    "stock": ("stock", False),
+    "mutual fund": ("mutual_fund", False),
+    "etf": ("etf", False),
+    "bond": ("bond", False),
+    "index": ("index", False),
+}
+
+
+@dataclass
+class HoldingRow:
+    """One parsed row from a brokerage holdings CSV."""
+    account_number: str | None
+    account_name: str | None
+    symbol: str
+    description: str
+    quantity_micros: int
+    price_micros: int
+    market_value_cents: int
+    cost_basis_cents: int | None
+    security_type: str
+    is_cash_equivalent: bool
+    source_format: str
+
+
+@dataclass
+class HoldingsCSVResult:
+    rows: list[HoldingRow] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
+    source_format: str = "unknown"
+    accounts_found: list[tuple[str | None, str | None]] = field(default_factory=list)
+
+
+def _clean_dollar(raw: str) -> str:
+    return raw.strip().replace("$", "").replace(",", "").strip()
+
+
+def _is_fidelity_csv(header_set: set[str]) -> bool:
+    return _FIDELITY_REQUIRED_HEADERS.issubset(header_set)
+
+
+def parse_holdings_csv(text: str) -> HoldingsCSVResult:
+    """Parse a brokerage holdings CSV. Currently supports Fidelity format.
+
+    Detects the brokerage from the CSV headers and delegates to the
+    appropriate parser. Returns a format-agnostic result.
+    """
+    lines = text.strip().split("\n")
+    if not lines:
+        result = HoldingsCSVResult()
+        result.errors.append("Empty CSV file")
+        return result
+
+    # Fidelity CSVs sometimes have BOM and/or trailing disclaimer lines
+    clean_lines = []
+    for line in lines:
+        stripped = line.strip().strip("﻿")
+        if not stripped:
+            continue
+        clean_lines.append(stripped)
+
+    if not clean_lines:
+        result = HoldingsCSVResult()
+        result.errors.append("No data rows found")
+        return result
+
+    reader = csv.DictReader(clean_lines)
+    if reader.fieldnames is None:
+        result = HoldingsCSVResult()
+        result.errors.append("Could not parse CSV headers")
+        return result
+
+    normalized_fields = {f.strip().lower(): f for f in reader.fieldnames}
+
+    if _is_fidelity_csv(set(normalized_fields.keys())):
+        return _parse_fidelity_csv(reader, normalized_fields)
+
+    result = HoldingsCSVResult()
+    result.errors.append(
+        f"Unrecognized CSV format. Headers found: {', '.join(reader.fieldnames)}"
+    )
+    return result
+
+
+def _get(row: dict[str, str], normalized: dict[str, str], key: str) -> str:
+    original = normalized.get(key, "")
+    if not original:
+        return ""
+    val = row.get(original)
+    return val.strip() if val else ""
+
+
+def _parse_fidelity_csv(
+    reader: csv.DictReader,
+    normalized_fields: dict[str, str],
+) -> HoldingsCSVResult:
+    result = HoldingsCSVResult(source_format="fidelity")
+    seen_accounts: set[tuple[str | None, str | None]] = set()
+
+    for line_num, row in enumerate(reader, start=2):
+        symbol = _get(row, normalized_fields, "symbol")
+
+        if not symbol or symbol == "--" or symbol.startswith("**"):
+            continue
+
+        description = _get(row, normalized_fields, "description")
+        if not description:
+            continue
+
+        # Account info
+        acct_num = _get(row, normalized_fields, "account number") or None
+        acct_name = _get(row, normalized_fields, "account name") or None
+        pair = (acct_num, acct_name)
+        if pair not in seen_accounts:
+            seen_accounts.add(pair)
+            result.accounts_found.append(pair)
+
+        # Security type
+        raw_type = _get(row, normalized_fields, "type").lower()
+        sec_type, is_cash = _FIDELITY_TYPE_MAP.get(raw_type, ("other", False))
+
+        # Fidelity uses special symbols for cash positions
+        if symbol in ("SPAXX", "FDRXX", "FCASH", "FZFXX", "SPRXX"):
+            is_cash = True
+            sec_type = "cash"
+
+        # Quantity — Fidelity sometimes uses "n/a" for pending/cash
+        raw_qty = _clean_dollar(_get(row, normalized_fields, "quantity"))
+        if not raw_qty or raw_qty.lower() == "n/a":
+            continue
+        try:
+            quantity_micros = _parse_micros(raw_qty)
+        except ValueError:
+            result.errors.append(f"Line {line_num}: bad quantity {raw_qty!r}")
+            continue
+
+        # Price
+        raw_price = _clean_dollar(_get(row, normalized_fields, "last price"))
+        if not raw_price or raw_price.lower() == "n/a":
+            price_micros = 0
+        else:
+            try:
+                price_micros = _parse_micros(raw_price)
+            except ValueError:
+                result.errors.append(f"Line {line_num}: bad price {raw_price!r}")
+                price_micros = 0
+
+        # Market value
+        raw_value = _clean_dollar(_get(row, normalized_fields, "current value"))
+        if not raw_value or raw_value.lower() == "n/a":
+            market_value_cents = 0
+        else:
+            try:
+                market_value_cents = _parse_cents(raw_value)
+            except ValueError:
+                result.errors.append(f"Line {line_num}: bad value {raw_value!r}")
+                market_value_cents = 0
+
+        # Cost basis
+        raw_basis = _clean_dollar(_get(row, normalized_fields, "cost basis total"))
+        cost_basis_cents: int | None = None
+        if raw_basis and raw_basis.lower() not in ("n/a", "--", ""):
+            try:
+                cost_basis_cents = _parse_cents(raw_basis)
+            except ValueError:
+                result.errors.append(f"Line {line_num}: bad cost basis {raw_basis!r}")
+
+        result.rows.append(HoldingRow(
+            account_number=acct_num,
+            account_name=acct_name,
+            symbol=symbol,
+            description=description,
+            quantity_micros=quantity_micros,
+            price_micros=price_micros,
+            market_value_cents=market_value_cents,
+            cost_basis_cents=cost_basis_cents,
+            security_type=sec_type,
+            is_cash_equivalent=is_cash,
+            source_format="fidelity",
+        ))
+
+    return result
 
 
 def parse_price_csv(text: str, security_name: str) -> PriceCSVResult:

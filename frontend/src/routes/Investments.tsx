@@ -1,10 +1,11 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, FileImage, Upload } from "lucide-react";
+import { ChevronLeft, FileImage, FileSpreadsheet, Info, RefreshCw, Settings, Upload } from "lucide-react";
 import { Layout } from "../components/Layout";
 import { SegmentedControl } from "../components/ui/segmented-control";
 import { Button } from "../components/ui/button";
+import { Dialog, DialogTitle } from "../components/ui/dialog";
 import { Select } from "../components/ui/select";
 import {
   formatCents,
@@ -17,6 +18,9 @@ import {
   useInvestmentOverview,
   useHoldings,
   useHoldingDetail,
+  useInvestmentSettings,
+  usePerformance,
+  useSecurities,
 } from "../hooks/useInvestments";
 import { useAccounts } from "../hooks/useAccounts";
 import type {
@@ -27,14 +31,30 @@ import type {
   LotDetail,
 } from "../types/models";
 import { cn } from "../lib/utils";
+import { api } from "../lib/api";
 import { usePendingFile } from "../components/GlobalDropZone";
 import { uploadStatementScan } from "../hooks/useStatementScans";
 
-const viewOptions: Array<{ value: "overview" | "holdings" | "import"; label: string }> = [
+const viewOptions: Array<{ value: "overview" | "holdings" | "performance" | "import"; label: string }> = [
   { value: "overview", label: "Overview" },
   { value: "holdings", label: "Holdings" },
+  { value: "performance", label: "Performance" },
   { value: "import", label: "Import" },
 ];
+
+// ── Info tooltip ─────────────────────────────────────────────────────────
+
+function InfoTip({ text }: { text: string }) {
+  return (
+    <span className="relative group/tip inline-flex ml-1 align-middle" tabIndex={0}>
+      <Info className="h-3.5 w-3.5 text-gray-400 dark:text-gray-500 cursor-help" aria-hidden="true" />
+      <span role="tooltip" className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 w-56 rounded-md bg-gray-900 dark:bg-gray-100 px-2.5 py-1.5 text-[11px] leading-snug font-normal normal-case tracking-normal text-gray-100 dark:text-gray-900 opacity-0 group-hover/tip:opacity-100 group-focus-within/tip:opacity-100 transition-opacity z-20 shadow-lg">
+        {text}
+      </span>
+      <span className="sr-only">{text}</span>
+    </span>
+  );
+}
 
 // ── Stat tile ────────────────────────────────────────────────────────────
 
@@ -43,16 +63,19 @@ function StatTile({
   value,
   delta,
   muted,
+  tooltip,
 }: {
   label: string;
   value: string;
   delta?: { value: string; positive: boolean } | null;
   muted?: boolean;
+  tooltip?: string;
 }) {
   return (
     <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-3">
       <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
         {label}
+        {tooltip && <InfoTip text={tooltip} />}
       </p>
       <p
         className={cn(
@@ -709,6 +732,532 @@ const INVESTMENT_ACCOUNT_TYPES = new Set([
   "brokerage", "ira", "roth_ira", "401k", "529", "hsa",
 ]);
 
+// ── Return decomposition ────────────────────────────────────────────────
+
+function DecompositionView({
+  decomposition,
+}: {
+  decomposition: { contributions_cents: number; income_cents: number; appreciation_cents: number };
+}) {
+  const { contributions_cents, income_cents, appreciation_cents } = decomposition;
+  const total = contributions_cents + income_cents + appreciation_cents;
+
+  const segments = [
+    { label: "Contributions", cents: contributions_cents, color: "bg-sky-500 dark:bg-sky-400" },
+    { label: "Income", cents: income_cents, color: "bg-emerald-500 dark:bg-emerald-400" },
+    { label: "Appreciation", cents: appreciation_cents, color: appreciation_cents >= 0 ? "bg-violet-500 dark:bg-violet-400" : "bg-red-500 dark:bg-red-400" },
+  ];
+
+  const absTotal = segments.reduce((s, seg) => s + Math.abs(seg.cents), 0);
+
+  return (
+    <div>
+      <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
+        Value Change Breakdown
+      </h3>
+
+      <div className="grid grid-cols-3 gap-3 mb-3">
+        <StatTile
+          label="Contributions"
+          value={formatGainCents(contributions_cents)}
+          tooltip="Net money you added or withdrew from the portfolio."
+        />
+        <StatTile
+          label="Income"
+          value={formatGainCents(income_cents)}
+          tooltip="Dividends, interest, and capital gain distributions received."
+        />
+        <StatTile
+          label="Appreciation"
+          value={formatGainCents(appreciation_cents)}
+          tooltip="Change in value from price movement alone, after removing contributions and income."
+          delta={{
+            value: formatGainCents(appreciation_cents),
+            positive: appreciation_cents >= 0,
+          }}
+        />
+      </div>
+
+      {absTotal > 0 && (
+        <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-3">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-medium text-gray-500 dark:text-gray-400">
+              Total change
+            </p>
+            <p className={cn(
+              "text-sm font-semibold",
+              total >= 0
+                ? "text-emerald-600 dark:text-emerald-400"
+                : "text-red-600 dark:text-red-400",
+            )}>
+              {formatGainCents(total)}
+            </p>
+          </div>
+
+          <div className="flex h-4 rounded-full overflow-hidden bg-gray-100 dark:bg-gray-700">
+            {segments
+              .filter((s) => s.cents !== 0)
+              .map((s) => (
+                <div
+                  key={s.label}
+                  className={cn("transition-all", s.color)}
+                  style={{ width: `${(Math.abs(s.cents) / absTotal) * 100}%` }}
+                  title={`${s.label}: ${formatGainCents(s.cents)}`}
+                />
+              ))}
+          </div>
+
+          <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2">
+            {segments.map((s) => (
+              <div key={s.label} className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400">
+                <span className={cn("inline-block h-2.5 w-2.5 rounded-sm", s.color)} />
+                <span>
+                  {s.label}{" "}
+                  {absTotal > 0 && (
+                    <span className="text-gray-400 dark:text-gray-500">
+                      {((Math.abs(s.cents) / absTotal) * 100).toFixed(0)}%
+                    </span>
+                  )}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Investment settings dialog ──────────────────────────────────────────
+
+function InvestmentSettingsDialog({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const { data: settings } = useInvestmentSettings();
+  const { data: securities = [] } = useSecurities();
+  const [benchmarkId, setBenchmarkId] = useState<number | "">("");
+  const [riskFree, setRiskFree] = useState("0");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [refreshingBenchmark, setRefreshingBenchmark] = useState(false);
+  const [benchmarkStatus, setBenchmarkStatus] = useState<string | null>(null);
+  const [refreshingRate, setRefreshingRate] = useState(false);
+  const [rateStatus, setRateStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (settings) {
+      setBenchmarkId(settings.benchmark_security_id ?? "");
+      setRiskFree(String(settings.risk_free_annual_bps));
+    }
+  }, [settings]);
+
+  if (!open) return null;
+
+  async function handleRefreshBenchmark() {
+    setRefreshingBenchmark(true);
+    setBenchmarkStatus(null);
+    setSaveError(null);
+    try {
+      const res = await api.post<{
+        security_id: number;
+        prices_added: number;
+        prices_updated: number;
+        prices_total: number;
+        set_as_benchmark: boolean;
+      }>("/investments/benchmark/refresh", {});
+      setBenchmarkId(res.security_id);
+      const parts = [`${res.prices_added} new`];
+      if (res.prices_updated) parts.push(`${res.prices_updated} updated`);
+      parts.push(`(${res.prices_total} total)`);
+      setBenchmarkStatus(
+        `SPY: ${parts.join(", ")}${res.set_as_benchmark ? " — set as benchmark" : ""}`
+      );
+      qc.invalidateQueries({ queryKey: ["investments", "settings"] });
+      qc.invalidateQueries({ queryKey: ["investments", "performance"] });
+      qc.invalidateQueries({ queryKey: ["investments", "securities"] });
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Benchmark refresh failed");
+    } finally {
+      setRefreshingBenchmark(false);
+    }
+  }
+
+  async function handleRefreshRate() {
+    setRefreshingRate(true);
+    setRateStatus(null);
+    setSaveError(null);
+    try {
+      const res = await api.post<{ rate_bps: number; rate_pct: number; source: string }>(
+        "/investments/risk-free-rate/refresh", {}
+      );
+      setRiskFree(String(res.rate_bps));
+      setRateStatus(`${res.rate_pct}% (${res.rate_bps} bps) — ${res.source}`);
+      qc.invalidateQueries({ queryKey: ["investments", "settings"] });
+      qc.invalidateQueries({ queryKey: ["investments", "performance"] });
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Rate refresh failed");
+    } finally {
+      setRefreshingRate(false);
+    }
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await api.patch("/investments/settings", {
+        benchmark_security_id: benchmarkId === "" ? null : Number(benchmarkId),
+        risk_free_annual_bps: Number(riskFree) || 0,
+      });
+      qc.invalidateQueries({ queryKey: ["investments", "settings"] });
+      qc.invalidateQueries({ queryKey: ["investments", "performance"] });
+      onClose();
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onClose={onClose}>
+      <DialogTitle>Investment Settings</DialogTitle>
+      <div className="space-y-4">
+        <div>
+          <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+            Benchmark security
+            <InfoTip text="The index fund or ETF to compare your portfolio against (e.g. a total market fund). Used to compute alpha, beta, and Sharpe ratio." />
+          </label>
+          <div className="flex gap-2 items-center">
+            <Select
+              value={String(benchmarkId)}
+              onChange={(e) => setBenchmarkId(e.target.value ? Number(e.target.value) : "")}
+              className="flex-1"
+            >
+              <option value="">None</option>
+              {securities.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.symbol ? `${s.symbol} — ${s.name}` : s.name}
+                </option>
+              ))}
+            </Select>
+            <Button
+              variant="ghost"
+              onClick={handleRefreshBenchmark}
+              disabled={refreshingBenchmark}
+              title="Download S&P 500 (SPY) price history"
+            >
+              <RefreshCw className={cn("h-3.5 w-3.5", refreshingBenchmark && "animate-spin")} />
+              <span className="ml-1 text-xs">
+                {refreshingBenchmark ? "Fetching..." : "S&P 500"}
+              </span>
+            </Button>
+          </div>
+          {benchmarkStatus ? (
+            <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">{benchmarkStatus}</p>
+          ) : (
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+              Pick a security with price history, or click S&P 500 to download SPY data automatically.
+            </p>
+          )}
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+            Risk-free rate (bps)
+            <InfoTip text="Annual risk-free rate in basis points (100 bps = 1%). Used in Sharpe ratio calculation. Typical value: 400-525 for current T-bill rates." />
+          </label>
+          <div className="flex gap-2 items-center">
+            <input
+              type="number"
+              min={0}
+              max={2000}
+              step={25}
+              value={riskFree}
+              onChange={(e) => setRiskFree(e.target.value)}
+              className="rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2.5 py-1.5 text-sm text-gray-900 dark:text-gray-100 w-28"
+            />
+            <Button
+              variant="ghost"
+              onClick={handleRefreshRate}
+              disabled={refreshingRate}
+              title="Fetch current 6-month US T-bill yield"
+            >
+              <RefreshCw className={cn("h-3.5 w-3.5", refreshingRate && "animate-spin")} />
+              <span className="ml-1 text-xs">
+                {refreshingRate ? "Fetching..." : "T-bill rate"}
+              </span>
+            </Button>
+          </div>
+          {rateStatus && (
+            <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">{rateStatus}</p>
+          )}
+        </div>
+
+        {saveError && (
+          <div className="rounded-lg border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-900/30 p-3 text-sm text-red-800 dark:text-red-300">
+            {saveError}
+          </div>
+        )}
+
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button onClick={handleSave} disabled={saving}>
+            {saving ? "Saving..." : "Save"}
+          </Button>
+        </div>
+      </div>
+    </Dialog>
+  );
+}
+
+// ── Performance view ────────────────────────────────────────────────────
+
+function PerformanceView() {
+  const { data, isLoading, error } = usePerformance();
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <span className="inline-block h-4 w-4 rounded-sm bg-sky-500 animate-pulse" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-lg border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-900/30 p-4 text-sm text-red-800 dark:text-red-300">
+        Failed to load performance data
+      </div>
+    );
+  }
+
+  if (!data) return null;
+
+  if (data.error) {
+    return (
+      <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/30 p-4 text-sm text-amber-800 dark:text-amber-300">
+        {data.error}
+      </div>
+    );
+  }
+
+  const rm = data.risk_metrics;
+  const fmtPctSigned = (v: number) => `${v >= 0 ? "+" : ""}${(v * 100).toFixed(2)}%`;
+
+  return (
+    <div className="space-y-6">
+      <InvestmentSettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+
+      {/* Returns row */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+            Returns
+          </h3>
+          <button
+            onClick={() => setSettingsOpen(true)}
+            className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+          >
+            <Settings className="h-3.5 w-3.5" />
+            Settings
+          </button>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {data.portfolio_return != null && (
+            <StatTile
+              label="Portfolio (TWR)"
+              tooltip="Time-weighted return: measures the strategy's performance independent of when you added or withdrew money."
+              value={fmtPctSigned(data.portfolio_return)}
+              delta={{
+                value: fmtPctSigned(data.portfolio_return),
+                positive: data.portfolio_return >= 0,
+              }}
+            />
+          )}
+          {data.xirr_return != null && (
+            <StatTile
+              label="Personal (XIRR)"
+              tooltip="Money-weighted return: your actual annualized return accounting for the timing and size of contributions and withdrawals."
+              value={fmtPctSigned(data.xirr_return)}
+              delta={{
+                value: fmtPctSigned(data.xirr_return),
+                positive: data.xirr_return >= 0,
+              }}
+            />
+          )}
+          {data.benchmark_return != null && (
+            <StatTile
+              label={`Benchmark${data.benchmark_symbol ? ` (${data.benchmark_symbol})` : ""}`}
+              tooltip="Buy-and-hold return of the benchmark index over the same period."
+              value={fmtPctSigned(data.benchmark_return)}
+              delta={{
+                value: fmtPctSigned(data.benchmark_return),
+                positive: data.benchmark_return >= 0,
+              }}
+            />
+          )}
+        </div>
+      </div>
+
+      {/* Decomposition */}
+      {data.decomposition && (
+        <DecompositionView decomposition={data.decomposition} />
+      )}
+
+      {/* Risk metrics */}
+      {rm && (
+        <div>
+          <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
+            Risk Analysis
+            <span className="ml-2 text-gray-400 dark:text-gray-500 font-normal normal-case">
+              ({rm.n_months} months vs {data.benchmark_symbol || data.benchmark_name || "benchmark"})
+            </span>
+          </h3>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <StatTile
+              label="Alpha (ann.)"
+              tooltip="Annualized excess return above what the benchmark explains. Positive means you're beating the market on a risk-adjusted basis."
+              value={fmtPctSigned(rm.alpha_annualized)}
+            />
+            <StatTile
+              label="Beta"
+              tooltip="Sensitivity to benchmark moves. 1.0 = moves with the market; >1 = more volatile; <1 = less volatile."
+              value={rm.beta.toFixed(2)}
+            />
+            <StatTile
+              label="Sharpe Ratio"
+              tooltip="Return per unit of risk (excess return / volatility). Higher is better; above 1.0 is generally considered good."
+              value={rm.sharpe_ratio.toFixed(2)}
+            />
+            <StatTile
+              label="Volatility (ann.)"
+              tooltip="Annualized standard deviation of monthly returns. Measures how much your portfolio's returns swing."
+              value={formatPct(rm.volatility_annualized)}
+            />
+            <StatTile
+              label="R²"
+              tooltip="How much of your portfolio's movement is explained by the benchmark. 1.0 = perfectly correlated; 0 = no relationship."
+              value={rm.r_squared.toFixed(3)}
+            />
+            <StatTile
+              label="Max Drawdown"
+              tooltip="Largest peak-to-trough decline in portfolio value. Measures worst-case loss over the period."
+              value={`-${formatPct(rm.max_drawdown)}`}
+            />
+          </div>
+        </div>
+      )}
+
+      {!rm && data.has_benchmark && (
+        <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/30 p-3 text-sm text-amber-800 dark:text-amber-300">
+          Risk metrics need at least 12 months of data and a configured benchmark.
+        </div>
+      )}
+
+      {!data.has_benchmark && (
+        <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-3 text-sm text-gray-600 dark:text-gray-400 flex items-center justify-between">
+          <span>No benchmark configured. Set one to see alpha, beta, and Sharpe ratio.</span>
+          <button
+            onClick={() => setSettingsOpen(true)}
+            className="ml-3 shrink-0 text-xs font-medium text-sky-600 dark:text-sky-400 hover:text-sky-700 dark:hover:text-sky-300 transition-colors"
+          >
+            Configure
+          </button>
+        </div>
+      )}
+
+      {/* Monthly returns table */}
+      {data.monthly_returns.length > 0 && (
+        <div>
+          <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
+            Monthly Returns
+          </h3>
+          <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50 dark:bg-gray-800 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                  <th className="px-3 py-2">Month</th>
+                  <th className="px-3 py-2 text-right">Portfolio</th>
+                  {data.has_benchmark && (
+                    <th className="px-3 py-2 text-right">
+                      {data.benchmark_symbol || "Benchmark"}
+                    </th>
+                  )}
+                  {data.has_benchmark && (
+                    <th className="px-3 py-2 text-right">Excess</th>
+                  )}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                {data.monthly_returns.map((m) => {
+                  const excess =
+                    m.benchmark != null ? m.portfolio - m.benchmark : null;
+                  return (
+                    <tr
+                      key={m.date}
+                      className="hover:bg-gray-50 dark:hover:bg-gray-800/50"
+                    >
+                      <td className="px-3 py-1.5 text-gray-700 dark:text-gray-300">
+                        {m.date}
+                      </td>
+                      <td
+                        className={cn(
+                          "px-3 py-1.5 text-right font-mono",
+                          m.portfolio >= 0
+                            ? "text-emerald-600 dark:text-emerald-400"
+                            : "text-red-600 dark:text-red-400"
+                        )}
+                      >
+                        {fmtPctSigned(m.portfolio)}
+                      </td>
+                      {data.has_benchmark && (
+                        <td
+                          className={cn(
+                            "px-3 py-1.5 text-right font-mono",
+                            m.benchmark != null && m.benchmark >= 0
+                              ? "text-emerald-600 dark:text-emerald-400"
+                              : "text-red-600 dark:text-red-400"
+                          )}
+                        >
+                          {m.benchmark != null ? fmtPctSigned(m.benchmark) : "—"}
+                        </td>
+                      )}
+                      {data.has_benchmark && (
+                        <td
+                          className={cn(
+                            "px-3 py-1.5 text-right font-mono",
+                            excess != null && excess >= 0
+                              ? "text-emerald-600 dark:text-emerald-400"
+                              : "text-red-600 dark:text-red-400"
+                          )}
+                        >
+                          {excess != null ? fmtPctSigned(excess) : "—"}
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+// ── Import section ──────────────────────────────────────────────────────
+
 interface QIFImportResult {
   transactions_imported: number;
   securities_created: number;
@@ -726,6 +1275,17 @@ interface LotRebuildResult {
   disposals_created: number;
 }
 
+interface CSVImportResult {
+  snapshots_created: number;
+  snapshots_updated: number;
+  securities_created: number;
+  accounts_created: number;
+  prices_recorded: number;
+  source_format: string;
+  as_of: string;
+  errors: string[];
+}
+
 function ImportSection() {
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -740,6 +1300,9 @@ function ImportSection() {
   const [importResult, setImportResult] = useState<QIFImportResult | null>(null);
   const [rebuildResult, setRebuildResult] = useState<LotRebuildResult | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const csvInputRef = useRef<HTMLInputElement>(null);
+  const [csvResult, setCsvResult] = useState<CSVImportResult | null>(null);
+  const [csvAsOf, setCsvAsOf] = useState(() => new Date().toISOString().slice(0, 10));
   const statementInputRef = useRef<HTMLInputElement>(null);
   const [statementUploading, setStatementUploading] = useState(false);
   const [statementError, setStatementError] = useState<string | null>(null);
@@ -781,6 +1344,41 @@ function ImportSection() {
       qc.invalidateQueries({ queryKey: ["investments"] });
     },
   });
+
+  const csvUploadMut = useMutation({
+    mutationFn: async (file: File) => {
+      const form = new FormData();
+      form.append("file", file);
+      const params = csvAsOf ? `?as_of=${csvAsOf}` : "";
+      const res = await fetch(`/api/investments/import/holdings-csv${params}`, {
+        method: "POST",
+        credentials: "include",
+        body: form,
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`HTTP ${res.status}: ${text}`);
+      }
+      return (await res.json()) as CSVImportResult;
+    },
+    onSuccess: (data) => {
+      setCsvResult(data);
+      qc.invalidateQueries({ queryKey: ["investments"] });
+      qc.invalidateQueries({ queryKey: ["accounts"] });
+    },
+  });
+
+  const handleCsvFile = useCallback(
+    (file: File) => {
+      if (!file.name.toLowerCase().endsWith(".csv")) {
+        alert("Only CSV files are supported.");
+        return;
+      }
+      setCsvResult(null);
+      csvUploadMut.mutate(file);
+    },
+    [csvUploadMut.mutate],
+  );
 
   const handleFile = useCallback(
     (file: File) => {
@@ -961,6 +1559,118 @@ function ImportSection() {
             </div>
           )}
 
+          {/* Holdings CSV import */}
+          <div className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-4">
+            <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
+              Holdings CSV
+            </h3>
+            <div className="mb-2">
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                Snapshot date
+              </label>
+              <input
+                type="date"
+                value={csvAsOf}
+                onChange={(e) => setCsvAsOf(e.target.value)}
+                className="rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2.5 py-1.5 text-sm text-gray-900 dark:text-gray-100"
+              />
+            </div>
+            <div
+              onClick={() =>
+                !csvUploadMut.isPending && csvInputRef.current?.click()
+              }
+              onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                resetDrag();
+                if (csvUploadMut.isPending) return;
+                const f = e.dataTransfer.files[0];
+                if (f) handleCsvFile(f);
+              }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+              className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-sky-400 cursor-pointer p-5 text-center transition-colors"
+            >
+              <input
+                ref={csvInputRef}
+                type="file"
+                accept=".csv"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  e.target.value = "";
+                  if (f) handleCsvFile(f);
+                }}
+                className="hidden"
+                disabled={csvUploadMut.isPending}
+              />
+              {csvUploadMut.isPending ? (
+                <>
+                  <span className="inline-block h-3 w-3 rounded-sm bg-sky-500 mb-2 animate-pulse" />
+                  <p className="text-sm text-gray-500">Importing…</p>
+                </>
+              ) : (
+                <>
+                  <FileSpreadsheet className="h-6 w-6 mb-1.5 text-gray-400" />
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                    Drop a brokerage CSV or click to browse
+                  </p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                    Fidelity holdings export — imports positions &amp; cost basis
+                  </p>
+                </>
+              )}
+            </div>
+
+            {csvUploadMut.isError && (
+              <div className="mt-2 rounded-lg border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-900/30 p-3 text-sm text-red-800 dark:text-red-300">
+                {csvUploadMut.error instanceof Error
+                  ? csvUploadMut.error.message
+                  : String(csvUploadMut.error)}
+              </div>
+            )}
+
+            {csvResult && (
+              <div className="mt-2 space-y-2">
+                <div className="rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/30 p-3 text-sm">
+                  <p className="font-medium text-emerald-800 dark:text-emerald-300">
+                    CSV import complete
+                  </p>
+                  <div className="text-xs text-emerald-700 dark:text-emerald-400 mt-1 space-y-0.5">
+                    <p>
+                      {csvResult.snapshots_created} position{csvResult.snapshots_created === 1 ? "" : "s"} created
+                      {csvResult.snapshots_updated > 0 &&
+                        `, ${csvResult.snapshots_updated} updated`}
+                    </p>
+                    {csvResult.securities_created > 0 && (
+                      <p>{csvResult.securities_created} securities created</p>
+                    )}
+                    {csvResult.accounts_created > 0 && (
+                      <p>{csvResult.accounts_created} accounts created</p>
+                    )}
+                    {csvResult.prices_recorded > 0 && (
+                      <p>{csvResult.prices_recorded} prices recorded</p>
+                    )}
+                    <p className="text-emerald-600 dark:text-emerald-500">
+                      Snapshot date: {csvResult.as_of} · Format: {csvResult.source_format}
+                    </p>
+                  </div>
+                </div>
+                {csvResult.errors.length > 0 && (
+                  <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/30 p-3 text-sm text-amber-800 dark:text-amber-300">
+                    <p className="font-semibold mb-1">Warnings:</p>
+                    <ul className="list-disc pl-4 text-xs">
+                      {csvResult.errors.map((e, i) => (
+                        <li key={i}>{e}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           {/* Statement upload (image or PDF) */}
           <div className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-4">
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
@@ -1026,7 +1736,7 @@ function ImportSection() {
 // ── Main component ───────────────────────────────────────────────────────
 
 export default function Investments() {
-  const [view, setView] = useState<"overview" | "holdings" | "import">("overview");
+  const [view, setView] = useState<"overview" | "holdings" | "performance" | "import">("overview");
   const [selectedHolding, setSelectedHolding] = useState<{
     securityId: number;
     accountId: number;
@@ -1060,6 +1770,8 @@ export default function Investments() {
           <OverviewView />
         ) : view === "holdings" ? (
           <HoldingsView onSelect={setSelectedHolding} />
+        ) : view === "performance" ? (
+          <PerformanceView />
         ) : (
           <ImportSection />
         )}
