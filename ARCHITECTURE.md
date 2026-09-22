@@ -245,14 +245,14 @@ Import:
 
 | Prefix | Key endpoints |
 |---|---|
-| `/api/accounts` | CRUD |
+| `/api/accounts` | CRUD, `POST /merge` |
 | `/api/categories` | CRUD (flat list, tree built client-side from parent_id) |
 | `/api/transactions` | CRUD, `PUT /:id/line_items`, `POST /categorize`, `POST /apply-categories`, `POST /:id/confirm-category` |
 | `/api/budgets` | CRUD, `GET /status`, `GET /suggestions`, `GET /income-summary`, `GET /unbudgeted-spend`, `GET /comparison`, `POST /seed` |
 | `/api/merchants` | CRUD, `GET /search?q=` |
 | `/api/receipts` | `POST /` upload, `GET /:id/image`, `POST /:id/process`, `GET /:id/ocr-preview`, `POST /:id/to-transaction`, `POST /:id/review-to-transaction` |
 | `/api/rules` | CRUD, `POST /preview`, `POST /reindex` |
-| `/api/transfers` | `POST /detect`, `GET /`, `DELETE /:pair_id` |
+| `/api/transfers` | `POST /detect`, `GET /`, `GET /:pair_id`, `POST /link`, `DELETE /:pair_id` |
 | `/api/ask` | `POST /` (RAG), `POST /reindex` |
 | `/api/import` | `POST /qif`, `POST /qfx`, `POST /confirm` |
 | `/api/export` | `GET /qif` |

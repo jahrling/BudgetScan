@@ -22,7 +22,7 @@ import {
   usePerformance,
   useSecurities,
 } from "../hooks/useInvestments";
-import { useAccounts } from "../hooks/useAccounts";
+import { useAccounts, useUpdateAccount, useMergeAccounts } from "../hooks/useAccounts";
 import type {
   AccountSummary,
   HoldingDetailResponse,
@@ -115,8 +115,16 @@ function gainColor(cents: number | null | undefined) {
 
 // ── Overview view ────────────────────────────────────────────────────────
 
+const INVESTMENT_ACCOUNT_TYPES = new Set([
+  "brokerage", "ira", "roth_ira", "401k", "529", "hsa",
+]);
+
 function OverviewView() {
   const { data, isLoading } = useInvestmentOverview();
+  const updateAcct = useUpdateAccount();
+  const mergeAccts = useMergeAccounts();
+  const [mergeSource, setMergeSource] = useState<number | null>(null);
+  const [mergeTarget, setMergeTarget] = useState<number | null>(null);
 
   if (isLoading) {
     return (
@@ -197,10 +205,18 @@ function OverviewView() {
       {/* Accounts table */}
       {data.accounts.length > 0 && (
         <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700">
+          <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
               Accounts
             </h2>
+            {data.accounts.length > 1 && (
+              <button
+                onClick={() => setMergeSource(mergeSource != null ? null : data.accounts[0].id)}
+                className="text-xs text-sky-600 hover:text-sky-800 dark:text-sky-400 dark:hover:text-sky-300"
+              >
+                {mergeSource != null ? "Cancel merge" : "Merge accounts…"}
+              </button>
+            )}
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -223,8 +239,20 @@ function OverviewView() {
                     <td className="px-4 py-2.5 font-medium text-gray-900 dark:text-gray-100">
                       {a.name}
                     </td>
-                    <td className="px-4 py-2.5 text-gray-500 dark:text-gray-400">
-                      {a.type}
+                    <td className="px-4 py-2.5">
+                      <select
+                        value={a.type}
+                        onChange={(e) =>
+                          updateAcct.mutate({ id: a.id, type: e.target.value })
+                        }
+                        className="bg-transparent text-gray-500 dark:text-gray-400 text-sm border-none p-0 cursor-pointer hover:text-gray-900 dark:hover:text-gray-200 focus:ring-0"
+                      >
+                        {[...INVESTMENT_ACCOUNT_TYPES].map((t) => (
+                          <option key={t} value={t}>
+                            {t}
+                          </option>
+                        ))}
+                      </select>
                     </td>
                     <td className="px-4 py-2.5 text-right font-variant-numeric tabular-nums text-gray-900 dark:text-gray-100">
                       {a.value_cents != null ? formatCents(a.value_cents) : "—"}
@@ -250,6 +278,65 @@ function OverviewView() {
               </tbody>
             </table>
           </div>
+
+          {mergeSource != null && (
+            <div className="px-4 py-3 border-t border-gray-100 dark:border-gray-700 bg-amber-50 dark:bg-amber-900/20">
+              <p className="text-xs text-amber-800 dark:text-amber-300 mb-2">
+                Merge one account into another. All holdings, transactions, and snapshots
+                will be reassigned, and the source account deleted.
+              </p>
+              <div className="flex gap-2 items-center flex-wrap">
+                <label className="text-xs text-gray-600 dark:text-gray-400">From:</label>
+                <select
+                  value={mergeSource}
+                  onChange={(e) => setMergeSource(Number(e.target.value))}
+                  className="h-7 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-xs px-2"
+                >
+                  {data.accounts.map((a: AccountSummary) => (
+                    <option key={a.id} value={a.id}>{a.name}</option>
+                  ))}
+                </select>
+                <label className="text-xs text-gray-600 dark:text-gray-400">Into:</label>
+                <select
+                  value={mergeTarget ?? ""}
+                  onChange={(e) => setMergeTarget(Number(e.target.value))}
+                  className="h-7 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-xs px-2"
+                >
+                  <option value="">Select target…</option>
+                  {data.accounts
+                    .filter((a: AccountSummary) => a.id !== mergeSource)
+                    .map((a: AccountSummary) => (
+                      <option key={a.id} value={a.id}>{a.name}</option>
+                    ))}
+                </select>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={!mergeTarget || mergeAccts.isPending}
+                  onClick={async () => {
+                    if (!mergeTarget || !mergeSource) return;
+                    if (!window.confirm(
+                      `Merge account into the target? The source account will be deleted.`
+                    )) return;
+                    await mergeAccts.mutateAsync({
+                      source_id: mergeSource,
+                      target_id: mergeTarget,
+                    });
+                    setMergeSource(null);
+                    setMergeTarget(null);
+                  }}
+                  className="text-xs"
+                >
+                  {mergeAccts.isPending ? "Merging…" : "Merge"}
+                </Button>
+              </div>
+              {mergeAccts.isError && (
+                <p className="text-xs text-red-600 mt-1">
+                  {(mergeAccts.error as Error).message || "Merge failed"}
+                </p>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -727,10 +814,6 @@ function ActionBadge({ action }: { action: string }) {
 }
 
 // ── Import section ──────────────────────────────────────────────────────
-
-const INVESTMENT_ACCOUNT_TYPES = new Set([
-  "brokerage", "ira", "roth_ira", "401k", "529", "hsa",
-]);
 
 // ── Return decomposition ────────────────────────────────────────────────
 

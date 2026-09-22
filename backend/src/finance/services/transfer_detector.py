@@ -168,14 +168,70 @@ async def detect_transfers(
     )
 
 
+@dataclass
+class LinkResult:
+    pair_id: int
+    debit_txn_id: int
+    credit_txn_id: int
+
+
+async def link_transfer_pair(
+    session: AsyncSession,
+    txn_id_a: int,
+    txn_id_b: int,
+) -> LinkResult:
+    """Manually link two transactions as a transfer pair."""
+    from fastapi import HTTPException
+
+    txn_a = await session.get(Transaction, txn_id_a)
+    txn_b = await session.get(Transaction, txn_id_b)
+    if txn_a is None or txn_b is None:
+        raise HTTPException(404, "One or both transactions not found")
+    if txn_a.account_id == txn_b.account_id:
+        raise HTTPException(400, "Both transactions are in the same account")
+    if txn_a.transfer_pair_id is not None or txn_b.transfer_pair_id is not None:
+        raise HTTPException(
+            409, "One or both transactions are already part of a transfer pair"
+        )
+
+    pair_id = min(txn_a.id, txn_b.id)
+    txn_a.transfer_pair_id = pair_id
+    txn_b.transfer_pair_id = pair_id
+
+    transfer_cat = await _get_or_create_transfer_category(session)
+    await _assign_transfer_category(session, txn_a, transfer_cat.id)
+    await _assign_transfer_category(session, txn_b, transfer_cat.id)
+
+    await session.commit()
+
+    debit = min([txn_a, txn_b], key=lambda t: t.amount_cents)
+    credit = max([txn_a, txn_b], key=lambda t: t.amount_cents)
+    return LinkResult(
+        pair_id=pair_id,
+        debit_txn_id=debit.id,
+        credit_txn_id=credit.id,
+    )
+
+
 async def clear_transfer_pair(
     session: AsyncSession, pair_id: int
 ) -> int:
-    """Remove a transfer pairing (user says it's not a transfer)."""
+    """Remove a transfer pairing and revert the Transfer category."""
+    transfer_cat = (
+        await session.execute(
+            select(Category).where(Category.name == _TRANSFER_CATEGORY_NAME)
+        )
+    ).scalar_one_or_none()
+
     stmt = select(Transaction).where(Transaction.transfer_pair_id == pair_id)
     txns = list((await session.execute(stmt)).scalars().all())
     for t in txns:
         t.transfer_pair_id = None
+        if transfer_cat and t.category_id == transfer_cat.id:
+            t.category_id = None
+            t.category_source = None
+            t.category_confidence = None
+            t.needs_review = True
     await session.commit()
     return len(txns)
 

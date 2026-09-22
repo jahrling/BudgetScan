@@ -44,11 +44,16 @@ import {
   useGenerateRules,
 } from "../hooks/useTransactions";
 import type { CategorizedTransaction } from "../hooks/useTransactions";
-import { useDetectTransfers } from "../hooks/useTransfers";
+import {
+  useDetectTransfers,
+  useLinkTransfer,
+  useRemoveTransferPair,
+} from "../hooks/useTransfers";
 import type {
   Merchant,
   LineItemInput,
 } from "../types/models";
+import { api } from "../lib/api";
 import { cn } from "../lib/utils";
 
 function todayStr(): string {
@@ -273,6 +278,7 @@ export default function Transactions() {
         onBack={() => setSelectedId(null)}
         onPrev={prevId !== null ? () => setSelectedId(prevId) : undefined}
         onNext={nextId !== null ? () => setSelectedId(nextId) : undefined}
+        onNavigate={(id) => setSelectedId(id)}
       />
     );
   }
@@ -1205,19 +1211,25 @@ function TransactionDetailView({
   onBack,
   onPrev,
   onNext,
+  onNavigate,
 }: {
   txnId: number;
   onBack: () => void;
   onPrev?: () => void;
   onNext?: () => void;
+  onNavigate?: (id: number) => void;
 }) {
   const qc = useQueryClient();
   const { data: txn, isLoading } = useTransaction(txnId);
   const replaceMut = useReplaceLineItems();
   const updateMut = useUpdateTransaction();
+  const linkMut = useLinkTransfer();
+  const unlinkMut = useRemoveTransferPair();
 
   const [splits, setSplits] = useState<LineItemInput[] | null>(null);
   const [dirty, setDirty] = useState(false);
+  const [showLinkDialog, setShowLinkDialog] = useState(false);
+  const [linkTargetId, setLinkTargetId] = useState("");
 
   async function handleToggleExcluded(exclude: boolean) {
     await updateMut.mutateAsync({ id: txnId, excluded: exclude ? true : null });
@@ -1370,6 +1382,108 @@ function TransactionDetailView({
               </span>
             )}
           </p>
+        </div>
+      )}
+
+      {txn.transfer_pair_id && txn.transfer_account_name ? (
+        <div className="rounded-lg border border-violet-200 dark:border-violet-800 bg-violet-50 dark:bg-violet-900/30 p-2.5 mb-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <ArrowLeftRight className="h-4 w-4 text-violet-600 dark:text-violet-400 flex-shrink-0" />
+            <p className="text-sm text-violet-800 dark:text-violet-300">
+              Transfer {txn.amount_cents < 0 ? "to" : "from"}{" "}
+              <span className="font-medium">{txn.transfer_account_name}</span>
+            </p>
+          </div>
+          <div className="flex gap-1.5">
+            {onNavigate && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  const pair = await api.get<{
+                    debit_txn_id: number;
+                    credit_txn_id: number;
+                  }>(`/transfers/${txn.transfer_pair_id}`);
+                  const otherId =
+                    pair.debit_txn_id === txn.id
+                      ? pair.credit_txn_id
+                      : pair.debit_txn_id;
+                  onNavigate(otherId);
+                }}
+              >
+                View counterpart
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                if (txn.transfer_pair_id != null) {
+                  unlinkMut.mutate(txn.transfer_pair_id);
+                }
+              }}
+              disabled={unlinkMut.isPending}
+              title="Unlink this transfer pair"
+            >
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="mb-3">
+          {showLinkDialog ? (
+            <div className="rounded-lg border border-violet-200 dark:border-violet-800 bg-violet-50 dark:bg-violet-900/30 p-3">
+              <p className="text-sm text-violet-800 dark:text-violet-300 mb-2">
+                Enter the ID of the counterpart transaction:
+              </p>
+              <div className="flex gap-2">
+                <Input
+                  type="number"
+                  value={linkTargetId}
+                  onChange={(e) => setLinkTargetId(e.target.value)}
+                  placeholder="Transaction ID"
+                  className="w-32"
+                />
+                <Button
+                  size="sm"
+                  disabled={!linkTargetId || linkMut.isPending}
+                  onClick={async () => {
+                    await linkMut.mutateAsync({
+                      transaction_id_a: txn.id,
+                      transaction_id_b: Number(linkTargetId),
+                    });
+                    setShowLinkDialog(false);
+                    setLinkTargetId("");
+                  }}
+                >
+                  {linkMut.isPending ? "Linking…" : "Link"}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setShowLinkDialog(false);
+                    setLinkTargetId("");
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
+              {linkMut.isError && (
+                <p className="text-xs text-red-600 mt-1">
+                  {(linkMut.error as Error).message || "Failed to link"}
+                </p>
+              )}
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowLinkDialog(true)}
+              className="text-xs text-violet-600 dark:text-violet-400 hover:text-violet-800 dark:hover:text-violet-300 flex items-center gap-1"
+            >
+              <ArrowLeftRight className="h-3 w-3" />
+              Link as transfer
+            </button>
+          )}
         </div>
       )}
 

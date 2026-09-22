@@ -62,3 +62,23 @@ export function useRemoveTransferPair() {
     },
   });
 }
+
+export interface LinkTransferResult {
+  pair_id: number;
+  debit_txn_id: number;
+  credit_txn_id: number;
+}
+
+export function useLinkTransfer() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      transaction_id_a: number;
+      transaction_id_b: number;
+    }) => api.post<LinkTransferResult>("/transfers/link", data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["transfers"] });
+      qc.invalidateQueries({ queryKey: ["transactions"] });
+    },
+  });
+}

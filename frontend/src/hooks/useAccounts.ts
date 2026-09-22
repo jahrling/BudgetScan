@@ -17,3 +17,38 @@ export function useCreateAccount() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["accounts"] }),
   });
 }
+
+export function useUpdateAccount() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      ...data
+    }: {
+      id: number;
+      name?: string;
+      type?: string;
+    }) => api.patch<Account>(`/accounts/${id}`, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["accounts"] });
+      qc.invalidateQueries({ queryKey: ["investments"] });
+    },
+  });
+}
+
+export function useMergeAccounts() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { source_id: number; target_id: number }) =>
+      api.post<{
+        target_id: number;
+        source_deleted: boolean;
+        rows_reassigned: Record<string, number>;
+      }>("/accounts/merge", data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["accounts"] });
+      qc.invalidateQueries({ queryKey: ["investments"] });
+      qc.invalidateQueries({ queryKey: ["transactions"] });
+    },
+  });
+}

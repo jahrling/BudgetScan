@@ -149,6 +149,17 @@ async def update_transaction(
     session: AsyncSession = Depends(get_session),
 ):
     txn = await txn_service.update_transaction(session, txn_id, data)
+    transfer_account_name = None
+    if txn.transfer_pair_id is not None:
+        from finance.models.transaction import Transaction as TxnModel
+        partner_q = (
+            select(TxnModel)
+            .where(TxnModel.transfer_pair_id == txn.transfer_pair_id)
+            .where(TxnModel.id != txn.id)
+        )
+        partner = (await session.execute(partner_q)).scalars().first()
+        if partner and partner.account:
+            transfer_account_name = partner.account.name
     return TransactionRead(
         id=txn.id,
         account_id=txn.account_id,
@@ -170,6 +181,7 @@ async def update_transaction(
         merchant_name=txn.merchant.name if txn.merchant else None,
         account_name=txn.account.name if txn.account else None,
         category_name=txn.category.name if txn.category else None,
+        transfer_account_name=transfer_account_name,
     )
 
 

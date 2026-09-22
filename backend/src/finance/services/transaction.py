@@ -134,6 +134,17 @@ async def get_transaction_with_items(session: AsyncSession, txn_id: int) -> dict
             "updated_at": li.updated_at,
         })
 
+    transfer_account_name = None
+    if txn.transfer_pair_id is not None:
+        partner_q = (
+            select(Transaction)
+            .where(Transaction.transfer_pair_id == txn.transfer_pair_id)
+            .where(Transaction.id != txn.id)
+        )
+        partner = (await session.execute(partner_q)).scalars().first()
+        if partner and partner.account:
+            transfer_account_name = partner.account.name
+
     return {
         "id": txn.id,
         "account_id": txn.account_id,
@@ -144,10 +155,21 @@ async def get_transaction_with_items(session: AsyncSession, txn_id: int) -> dict
         "quicken_id": txn.quicken_id,
         "receipt_id": txn.receipt_id,
         "status": txn.status,
+        "transfer_pair_id": txn.transfer_pair_id,
+        "category_id": txn.category_id,
+        "category_source": txn.category_source,
+        "category_confidence": txn.category_confidence,
+        "needs_review": txn.needs_review,
         "excluded": txn.excluded,
+        "is_recurring": txn.is_recurring,
+        "recurrence_cadence": txn.recurrence_cadence,
+        "recurrence_group_id": txn.recurrence_group_id,
         "created_at": txn.created_at,
         "updated_at": txn.updated_at,
         "merchant_name": txn.merchant.name if txn.merchant else None,
+        "account_name": txn.account.name if txn.account else None,
+        "category_name": txn.category.name if txn.category else None,
+        "transfer_account_name": transfer_account_name,
         "line_items": line_items_data,
     }
 
