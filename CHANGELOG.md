@@ -1,5 +1,17 @@
 # BudgetScan Changelog
 
+## 2026-09-22
+
+- Add transfer counterpart display in transaction detail view: shows a violet banner with the other account name, direction (to/from), and a "View counterpart" button to navigate to the paired transaction.
+- Add manual transfer linking: "Link as transfer" action in the transaction detail view lets users manually pair two transactions as a transfer, complementing the existing auto-detection.
+- Add `GET /api/transfers/{pair_id}` endpoint for direct transfer pair lookup.
+- Add `POST /api/transfers/link` endpoint for manually linking two transactions as a transfer pair.
+- Fix unlink behavior: clearing a transfer pair now also reverts the "Transfer" category and flags the transactions for re-categorization.
+- Fix `get_transaction_with_items` missing fields: detail view now returns `transfer_pair_id`, `account_name`, `category_id/name/source/confidence`, `needs_review`, `is_recurring`, `recurrence_cadence`, `recurrence_group_id`, and `transfer_account_name`.
+- Add inline account type editing in the Investments overview: click the type column to change an account between brokerage, IRA, 401k, etc.
+- Add account merge API (`POST /api/accounts/merge`): reassigns all transactions, investment transactions, lots, position snapshots, and statement scans from the source to the target account, then deletes the source.
+- Add account merge UI in the Investments overview: select source and target accounts to consolidate duplicates.
+
 ## 2026-09-21
 
 - Add S&P 500 benchmark auto-download: fetches monthly SPY prices from Stooq, creates the security, stores price history, and sets it as portfolio benchmark — all in one click from Investment Settings.
