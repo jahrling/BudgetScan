@@ -28,6 +28,7 @@ class TransactionRead(BaseModel):
     receipt_id: int | None
     status: str
     transfer_pair_id: int | None = None
+    transfer_target_account_id: int | None = None
     category_id: int | None = None
     category_source: str | None = None
     category_confidence: float | None = None
@@ -42,6 +43,7 @@ class TransactionRead(BaseModel):
     account_name: str | None = None
     category_name: str | None = None
     transfer_account_name: str | None = None
+    transfer_target_account_name: str | None = None
 
     model_config = {"from_attributes": True}
 

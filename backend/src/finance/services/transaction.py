@@ -145,6 +145,12 @@ async def get_transaction_with_items(session: AsyncSession, txn_id: int) -> dict
         if partner and partner.account:
             transfer_account_name = partner.account.name
 
+    transfer_target_account_name = None
+    if txn.transfer_target_account_id is not None:
+        target_acct = await session.get(Account, txn.transfer_target_account_id)
+        if target_acct:
+            transfer_target_account_name = target_acct.name
+
     return {
         "id": txn.id,
         "account_id": txn.account_id,
@@ -156,6 +162,7 @@ async def get_transaction_with_items(session: AsyncSession, txn_id: int) -> dict
         "receipt_id": txn.receipt_id,
         "status": txn.status,
         "transfer_pair_id": txn.transfer_pair_id,
+        "transfer_target_account_id": txn.transfer_target_account_id,
         "category_id": txn.category_id,
         "category_source": txn.category_source,
         "category_confidence": txn.category_confidence,
@@ -170,6 +177,7 @@ async def get_transaction_with_items(session: AsyncSession, txn_id: int) -> dict
         "account_name": txn.account.name if txn.account else None,
         "category_name": txn.category.name if txn.category else None,
         "transfer_account_name": transfer_account_name,
+        "transfer_target_account_name": transfer_target_account_name,
         "line_items": line_items_data,
     }
 

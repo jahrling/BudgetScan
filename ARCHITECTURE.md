@@ -15,6 +15,7 @@ Account (name, type, quicken_id, account_number, currency)
         ├── category_id FK → Category (nullable, denormalized from single line item)
         ├── receipt_id FK → Receipt (nullable)
         ├── transfer_pair_id (links two txns as a transfer)
+        ├── transfer_target_account_id FK → Account (nullable, target account when no counterpart yet)
         ├── status: "pending" | "split" | "confirmed"
         ├── needs_review, category_source, category_confidence
         └─< LineItem (transaction_id FK)
@@ -51,6 +52,13 @@ InvestmentSettings (key unique, value — portfolio-level config like benchmark)
 
 StatementScan (file_path, sha256 unique, account_id FK nullable, as_of, ocr_status, ocr_raw_json)
   — input: image (JPG/PNG) or PDF; PDF pages rendered to images via PyMuPDF before OCR
+
+EmailAccount (email, display_name, provider, credentials_path, token_path, scopes, is_active, can_send, fetch_label, processed_label)
+  └─< EmailMessage (email_account_id FK, gmail_message_id unique, thread_id, from_addr, to_addr, subject, received_at, body_html, body_text, processor, process_status)
+        └─< EmailReceipt (email_message_id FK, receipt_id FK nullable, transaction_id FK nullable, vendor, order_id, order_date, total_cents, parsed_json, match_status)
+
+EmailPolicy (name unique, purpose, recipient, template_name, max_frequency_minutes, is_active, email_account_id FK nullable)
+  └─< EmailLog (policy_id FK, sent_at, recipient, subject, content_hash, trigger, status, error_message)
 ```
 
 LineItems have no account — inherited from parent Transaction. Transaction.category_id is denormalized from its single LineItem (null when split).
@@ -74,6 +82,14 @@ backend/src/finance/
     quicken.py         — QIF/QFX parse, candidate matching, import confirm
     finance_qa.py      — RAG: numeric → SQL, free-text → vector retrieval + generation
     market_data.py     — fetch S&P 500 prices (Stooq) and T-bill risk-free rate (FRED)
+    email/
+      gmail_client.py  — OAuth2 auth, fetch/search/label/send via Gmail API
+      ingester.py      — fetch new emails, dedupe, dispatch to processors
+      sender.py        — policy-gated sending with rate limits and audit logging
+      processors/
+        registry.py    — routes emails to parsers by sender/subject patterns
+        amazon.py      — parse Amazon order confirmation emails via template + LLM
+      templates/       — Jinja2 email templates (budget_alert, etc.)
 
 frontend/src/
   main.tsx             — BrowserRouter, QueryClient (30s staleTime), AuthGuard, lazy routes
@@ -241,6 +257,36 @@ Import:
   → response: counts (snapshots created/updated, securities, accounts, prices)
 ```
 
+### Email Gateway (Gmail → Amazon receipts, alerts)
+```
+Account setup:
+  → POST /api/email/accounts {email, can_send} → create EmailAccount row
+  → POST /api/email/accounts/:id/oauth/start → returns auth_url
+  → user visits auth_url, copies code
+  → POST /api/email/accounts/:id/oauth/callback {code} → exchanges for token, stores to data/gmail-tokens/
+
+Fetch & process:
+  → POST /api/email/fetch {email_account_id, max_results, query}
+      → gmail_client.fetch_messages() via Gmail API
+      → per message: dedupe by gmail_message_id
+      → registry.find_processor(from_addr, subject) → dispatches to matching processor
+      → AmazonProcessor: regex extracts order_id/total, LLM extracts line items via Ollama text model
+      → creates EmailReceipt row (match_status="unmatched")
+      → labels processed message in Gmail (BudgetScan/Processed)
+
+Match to transactions:
+  → GET /api/email/receipts/:id/candidates?days_window=7
+      → finds transactions matching amount_cents + posted_at within window
+  → POST /api/email/receipts/:id/match {transaction_id}
+      → links EmailReceipt → Transaction
+
+Policy-gated sending (Tier 2, all gated):
+  → EmailPolicy defines: name, recipient, template, max_frequency_minutes
+  → sender.send_by_policy(): validates policy active, checks rate limit, renders Jinja2 template,
+    sends via gmail_client.send_email(), logs to EmailLog
+  → requires: GMAIL_SEND_ENABLED=true + account.can_send=true + active policy
+```
+
 ## API Routes
 
 | Prefix | Key endpoints |
@@ -259,6 +305,7 @@ Import:
 | `/api/auth` | `GET /needs-setup`, `POST /setup`, `POST /login`, `POST /logout`, `GET /me` |
 | `/api/investments` | `GET /overview`, `GET /holdings`, `GET /performance`, `POST /import-qif`, `POST /import/holdings-csv`, `POST /benchmark/refresh`, `POST /risk-free-rate/refresh`, `GET /accounts`, lot rebuild, analytics |
 | `/api/statement-scans` | `POST /` upload, `GET /:id`, `GET /:id/file`, `GET /:id/preview`, `POST /:id/reprocess`, `POST /:id/materialize` |
+| `/api/email` | accounts CRUD, `POST /:id/oauth/start`, `POST /:id/oauth/callback`, `POST /fetch`, messages list/detail, receipts list/detail, `GET /receipts/:id/candidates`, `POST /receipts/:id/match`, policies CRUD, `GET /logs` |
 
 ## Query Cache Keys
 

@@ -112,6 +112,108 @@ async def list_pairs(
     return TransferListResponse(items=items, total=total)
 
 
+class CandidateRead(BaseModel):
+    id: int
+    account_id: int
+    posted_at: str
+    amount_cents: int
+    description: str | None
+    merchant_name: str | None
+    days_apart: int
+
+
+class CandidateResponse(BaseModel):
+    candidates: list[CandidateRead]
+
+
+@router.get("/candidates", response_model=CandidateResponse)
+async def get_candidates(
+    transaction_id: int = Query(...),
+    account_id: int = Query(...),
+    session: AsyncSession = Depends(get_session),
+):
+    """Find candidate counterpart transactions for a manual transfer link."""
+    from sqlalchemy import func
+    from finance.models.transaction import Transaction as TxnModel
+
+    source = await session.get(TxnModel, transaction_id)
+    if source is None:
+        raise HTTPException(404, "Source transaction not found")
+    if source.account_id == account_id:
+        raise HTTPException(400, "Target account must differ from source")
+
+    target_amount = -source.amount_cents
+
+    q = (
+        select(TxnModel)
+        .where(TxnModel.account_id == account_id)
+        .where(TxnModel.amount_cents == target_amount)
+        .where(TxnModel.transfer_pair_id.is_(None))
+        .where(TxnModel.id != transaction_id)
+        .order_by(
+            func.abs(
+                func.julianday(TxnModel.posted_at)
+                - func.julianday(source.posted_at)
+            )
+        )
+        .limit(20)
+    )
+    rows = list((await session.execute(q)).scalars().all())
+
+    candidates = []
+    for r in rows:
+        delta = abs((r.posted_at.replace(tzinfo=None) - source.posted_at.replace(tzinfo=None)).days)
+        candidates.append(
+            CandidateRead(
+                id=r.id,
+                account_id=r.account_id,
+                posted_at=r.posted_at.isoformat(),
+                amount_cents=r.amount_cents,
+                description=r.description,
+                merchant_name=r.merchant.name if r.merchant else None,
+                days_apart=delta,
+            )
+        )
+    return CandidateResponse(candidates=candidates)
+
+
+class MarkTransferRequest(BaseModel):
+    transaction_id: int
+    target_account_id: int
+
+
+@router.post("/mark")
+async def mark_as_transfer(
+    body: MarkTransferRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Mark a transaction as a transfer to a target account without a counterpart."""
+    from finance.models.account import Account as AcctModel
+    from finance.models.transaction import Transaction as TxnModel
+    from finance.services.transfer_detector import _get_or_create_transfer_category, _assign_transfer_category
+
+    txn = await session.get(TxnModel, body.transaction_id)
+    if txn is None:
+        raise HTTPException(404, "Transaction not found")
+    target = await session.get(AcctModel, body.target_account_id)
+    if target is None:
+        raise HTTPException(404, "Target account not found")
+    if txn.account_id == body.target_account_id:
+        raise HTTPException(400, "Target account must differ from source")
+    if txn.transfer_pair_id is not None:
+        raise HTTPException(409, "Transaction already linked to a transfer pair")
+    if txn.transfer_target_account_id is not None:
+        raise HTTPException(409, "Transaction already marked as a transfer")
+
+    txn.transfer_target_account_id = body.target_account_id
+
+    transfer_cat = await _get_or_create_transfer_category(session)
+    await _assign_transfer_category(session, txn, transfer_cat.id)
+
+    await session.commit()
+    return {"ok": True, "transaction_id": txn.id, "target_account_id": body.target_account_id}
+
+
 @router.get("/{pair_id}", response_model=TransferPairRead)
 async def get_pair(
     pair_id: int,
