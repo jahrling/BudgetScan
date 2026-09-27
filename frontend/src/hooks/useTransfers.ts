@@ -82,3 +82,41 @@ export function useLinkTransfer() {
     },
   });
 }
+
+export interface TransferCandidate {
+  id: number;
+  account_id: number;
+  posted_at: string;
+  amount_cents: number;
+  description: string | null;
+  merchant_name: string | null;
+  days_apart: number;
+}
+
+export function useTransferCandidates(
+  transactionId: number | null,
+  accountId: number | null,
+) {
+  return useQuery({
+    queryKey: ["transfer-candidates", transactionId, accountId],
+    queryFn: () =>
+      api.get<{ candidates: TransferCandidate[] }>(
+        `/transfers/candidates?transaction_id=${transactionId}&account_id=${accountId}`,
+      ),
+    enabled: transactionId != null && accountId != null,
+  });
+}
+
+export function useMarkTransfer() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      transaction_id: number;
+      target_account_id: number;
+    }) => api.post("/transfers/mark", data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["transfers"] });
+      qc.invalidateQueries({ queryKey: ["transactions"] });
+    },
+  });
+}

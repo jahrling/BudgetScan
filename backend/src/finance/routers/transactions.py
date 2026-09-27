@@ -98,6 +98,22 @@ async def list_transactions(
             if other and other.account:
                 counterpart_map[t.id] = other.account.name
 
+    # Batch-resolve target account names for account-only transfers
+    from finance.models.account import Account as AcctModel
+    target_acct_ids = {
+        t.transfer_target_account_id
+        for t in txns
+        if t.transfer_target_account_id and not t.transfer_pair_id
+    }
+    target_acct_map: dict[int, str] = {}
+    if target_acct_ids:
+        rows = (
+            await session.execute(
+                select(AcctModel).where(AcctModel.id.in_(target_acct_ids))
+            )
+        ).scalars().all()
+        target_acct_map = {a.id: a.name for a in rows}
+
     items = []
     for t in txns:
         items.append(
@@ -112,6 +128,7 @@ async def list_transactions(
                 receipt_id=t.receipt_id,
                 status=t.status,
                 transfer_pair_id=t.transfer_pair_id,
+                transfer_target_account_id=t.transfer_target_account_id,
                 category_id=t.category_id,
                 category_source=t.category_source,
                 category_confidence=t.category_confidence,
@@ -123,6 +140,9 @@ async def list_transactions(
                 account_name=t.account.name if t.account else None,
                 category_name=t.category.name if t.category else None,
                 transfer_account_name=counterpart_map.get(t.id),
+                transfer_target_account_name=target_acct_map.get(
+                    t.transfer_target_account_id  # type: ignore[arg-type]
+                ) if t.transfer_target_account_id and not t.transfer_pair_id else None,
             )
         )
     return {"items": items, "total": total}
@@ -160,6 +180,14 @@ async def update_transaction(
         partner = (await session.execute(partner_q)).scalars().first()
         if partner and partner.account:
             transfer_account_name = partner.account.name
+
+    transfer_target_account_name = None
+    if txn.transfer_target_account_id and not txn.transfer_pair_id:
+        from finance.models.account import Account as AcctModel
+        target_acct = await session.get(AcctModel, txn.transfer_target_account_id)
+        if target_acct:
+            transfer_target_account_name = target_acct.name
+
     return TransactionRead(
         id=txn.id,
         account_id=txn.account_id,
@@ -171,6 +199,7 @@ async def update_transaction(
         receipt_id=txn.receipt_id,
         status=txn.status,
         transfer_pair_id=txn.transfer_pair_id,
+        transfer_target_account_id=txn.transfer_target_account_id,
         category_id=txn.category_id,
         category_source=txn.category_source,
         category_confidence=txn.category_confidence,
@@ -182,6 +211,7 @@ async def update_transaction(
         account_name=txn.account.name if txn.account else None,
         category_name=txn.category.name if txn.category else None,
         transfer_account_name=transfer_account_name,
+        transfer_target_account_name=transfer_target_account_name,
     )
 
 

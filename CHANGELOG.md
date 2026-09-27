@@ -1,7 +1,35 @@
 # BudgetScan Changelog
 
+## 2026-09-27
+
+- Redesign **manual transfer linking UX**: instead of asking for a raw transaction ID, the flow now starts with an account picker, then shows candidate counterpart transactions (matched by amount and sorted by date proximity) that can be linked with one click.
+- Add **account-only transfer marking** for transfers where the counterpart hasn't posted yet — records the target account and assigns the Transfer category without requiring a paired transaction.
+- Add `transfer_target_account_id` to the Transaction model to persist the intended transfer account independently of a linked pair.
+- Add `GET /api/transfers/candidates` endpoint to find matching unlinked transactions by account and amount.
+- Add `POST /api/transfers/mark` endpoint for account-only transfer marking.
+
+## 2026-09-24
+
+- Add **Accounts tab** to the Sync page: full account management with expandable detail rows showing all fields (name, type, institution name, institution address, routing number, Quicken ID). All fields are inline-editable.
+- Add **Add Account** form on the Accounts tab.
+- Add `routing_number`, `institution_name`, and `institution_address` fields to the Account model so accounts carry their bank identity.
+- Add ABA routing number validation (checksum) and lookup endpoint (`GET /api/accounts/routing-lookup/{rtn}`) with a static table of ~100 common US bank routing numbers.
+- SimpleFIN compatibility check now searches by `institution_name` when set, falling back to parsing account names. Searches are deduplicated by institution so multiple accounts at the same bank share one search.
+- Improve SimpleFIN error handling: fail-fast probe on startup, typed `SimpleFINError` exceptions, and frontend messages that explain what went wrong instead of showing raw HTTP status codes.
+- Rename nav tab from "Sync" to "Sync Accts".
+
+## 2026-09-23
+
+- Add bank compatibility checkers for SimpleFIN and Teller on the Sync page. Each checks BudgetScan accounts against the provider's supported institution list and archives a JSON report to `data/bank-compatibility/`. No provider signup required to run the check.
+- Add backend proxy for Teller institutions API (avoids browser CORS) with disk caching and manual refresh.
+- Add SimpleFIN institution search via server-side scraping of their search page (no bulk list API available).
+
 ## 2026-09-22
 
+- Add email gateway with Gmail API integration for automated receipt ingestion. Multi-account support with OAuth2 authorization flow, per-account scoping (read-only vs send-capable).
+- Add Amazon order confirmation email processor: parses order ID, total, and line items using template regex extraction with Ollama LLM fallback, stores structured EmailReceipt records.
+- Add email receipt-to-transaction matching: candidate finder by amount and date window, manual match confirmation linking email receipts to imported Quicken transactions.
+- Add policy-gated email sending: outbound emails require an active EmailPolicy with defined recipient, template, and frequency limit. Rate limiting, template rendering via Jinja2, and full audit logging (EmailLog). Global kill switch (GMAIL_SEND_ENABLED) defaults to off.
 - Add transfer counterpart display in transaction detail view: shows a violet banner with the other account name, direction (to/from), and a "View counterpart" button to navigate to the paired transaction.
 - Add manual transfer linking: "Link as transfer" action in the transaction detail view lets users manually pair two transactions as a transfer, complementing the existing auto-detection.
 - Add `GET /api/transfers/{pair_id}` endpoint for direct transfer pair lookup.

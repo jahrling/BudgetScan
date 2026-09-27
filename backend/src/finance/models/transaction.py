@@ -35,6 +35,9 @@ class Transaction(Base):
     category_source: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     needs_review: Mapped[bool] = mapped_column(default=True)
     transfer_pair_id: Mapped[Optional[int]] = mapped_column(nullable=True, index=True)
+    transfer_target_account_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("accounts.id"), nullable=True, index=True
+    )
     excluded: Mapped[Optional[bool]] = mapped_column(nullable=True, default=None)
     is_recurring: Mapped[Optional[bool]] = mapped_column(nullable=True, default=None)
     recurrence_cadence: Mapped[Optional[str]] = mapped_column(
@@ -44,7 +47,7 @@ class Transaction(Base):
         nullable=True, default=None, index=True
     )
 
-    account: Mapped["Account"] = relationship("Account", lazy="selectin")
+    account: Mapped["Account"] = relationship("Account", lazy="selectin", foreign_keys=[account_id])
     category: Mapped[Optional["Category"]] = relationship("Category", lazy="selectin")
     merchant: Mapped[Optional["Merchant"]] = relationship("Merchant", lazy="selectin")
     receipt: Mapped[Optional["Receipt"]] = relationship("Receipt", lazy="selectin")

@@ -116,6 +116,9 @@ export interface Account {
   type: string;
   quicken_id: string | null;
   account_number: string | null;
+  routing_number: string | null;
+  institution_name: string | null;
+  institution_address: string | null;
   currency: string;
   created_at: string;
   updated_at: string;
@@ -158,6 +161,7 @@ export interface Transaction {
   receipt_id: number | null;
   status: string;
   transfer_pair_id: number | null;
+  transfer_target_account_id: number | null;
   category_id: number | null;
   category_source: string | null;
   category_confidence: number | null;
@@ -170,6 +174,7 @@ export interface Transaction {
   account_name: string | null;
   category_name: string | null;
   transfer_account_name: string | null;
+  transfer_target_account_name: string | null;
   created_at: string;
   updated_at: string;
 }
