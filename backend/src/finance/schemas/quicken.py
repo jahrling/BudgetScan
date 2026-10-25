@@ -68,6 +68,30 @@ class ParseResultSchema(BaseModel):
     rule_persist_result: RulePersistResultSchema | None = None
 
 
+class StatementParseResultSchema(ParseResultSchema):
+    format: str  # 'csv' | 'ofx' | 'pdf'
+    inverted: bool | None = None  # None when the file's sign was unambiguous
+    columns: dict[str, str] = Field(default_factory=dict)
+
+
+class ReconciliationSchema(BaseModel):
+    previous_balance_cents: int | None
+    new_balance_cents: int | None
+    charges_cents: int
+    credits_cents: int
+    difference_cents: int | None  # None when the summary couldn't be read
+
+
+class StatementPdfJobSchema(BaseModel):
+    job_id: str
+    status: str  # 'running' | 'done' | 'failed'
+    pages_done: int
+    pages_total: int
+    error: str | None = None
+    result: StatementParseResultSchema | None = None
+    reconciliation: ReconciliationSchema | None = None
+
+
 class ConfirmAction(BaseModel):
     candidate_index: int
     action: str  # 'create' | 'skip' | 'merge-with:<id>'

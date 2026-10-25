@@ -1,7 +1,8 @@
+from dataclasses import asdict
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import PlainTextResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,12 +18,18 @@ from finance.schemas.quicken import (
     ConfirmResponse,
     MemorizedRuleSchema,
     ParseResultSchema,
+    ReconciliationSchema,
     RuleConflictSchema,
     RulePersistResultSchema,
     SplitCandidateSchema,
+    StatementParseResultSchema,
+    StatementPdfJobSchema,
     TransactionCandidateSchema,
 )
 from finance.services import quicken as svc
+from finance.services import statement_import, statement_pdf
+
+_MAX_STATEMENT_BYTES = 5 * 1024 * 1024
 
 import_router = APIRouter(
     prefix="/api/import",
@@ -101,6 +108,96 @@ async def import_qfx(
     result = await svc.import_qfx(data, session)
     await svc.match_candidates(session, result.candidates)
     return _to_schema(result)
+
+
+@import_router.post("/statement", response_model=StatementParseResultSchema)
+async def import_statement(
+    file: UploadFile = File(...),
+    account_id: int = Form(...),
+    invert: bool | None = Form(None),
+    session: AsyncSession = Depends(get_session),
+):
+    """Parse a card/bank statement (CSV or QFX/OFX) for one chosen account.
+
+    Returns candidates for review; nothing is written until /confirm.
+    """
+    account = await session.get(Account, account_id)
+    if account is None:
+        raise HTTPException(status_code=404, detail="Account not found")
+    data = await file.read(_MAX_STATEMENT_BYTES + 1)
+    if len(data) > _MAX_STATEMENT_BYTES:
+        raise HTTPException(status_code=413, detail="Statement file too large (max 5 MB)")
+    try:
+        result = await statement_import.parse_statement(
+            data, file.filename, account, session, invert=invert
+        )
+    except statement_import.UnsupportedStatementError as exc:
+        raise HTTPException(status_code=415, detail=str(exc))
+    await svc.match_candidates(session, result.candidates)
+    return _to_statement_schema(result)
+
+
+def _to_statement_schema(
+    result: statement_import.StatementParseResult,
+) -> StatementParseResultSchema:
+    return StatementParseResultSchema(
+        **_to_schema(result).model_dump(),
+        format=result.format,
+        inverted=result.inverted,
+        columns=result.columns,
+    )
+
+
+def _to_job_schema(job: statement_pdf.PdfJob) -> StatementPdfJobSchema:
+    return StatementPdfJobSchema(
+        job_id=job.id,
+        status=job.status,
+        pages_done=job.pages_done,
+        pages_total=job.pages_total,
+        error=job.error,
+        result=_to_statement_schema(job.result) if job.result else None,
+        reconciliation=(
+            ReconciliationSchema(**asdict(job.reconciliation)) if job.reconciliation else None
+        ),
+    )
+
+
+@import_router.post("/statement-pdf", response_model=StatementPdfJobSchema, status_code=202)
+async def import_statement_pdf(
+    file: UploadFile = File(...),
+    account_id: int = Form(...),
+    session: AsyncSession = Depends(get_session),
+):
+    """Start parsing a PDF statement with the local LLM; poll the GET below.
+
+    The PDF is held in memory only for the job's duration, never stored.
+    """
+    account = await session.get(Account, account_id)
+    if account is None:
+        raise HTTPException(status_code=404, detail="Account not found")
+    data = await file.read(_MAX_STATEMENT_BYTES + 1)
+    if len(data) > _MAX_STATEMENT_BYTES:
+        raise HTTPException(status_code=413, detail="Statement file too large (max 5 MB)")
+    if not data.startswith(b"%PDF"):
+        raise HTTPException(status_code=415, detail="Not a PDF file")
+    return _to_job_schema(statement_pdf.start_job(data, account))
+
+
+@import_router.get("/statement-pdf/{job_id}", response_model=StatementPdfJobSchema)
+async def get_statement_pdf_job(
+    job_id: str,
+    session: AsyncSession = Depends(get_session),
+):
+    job = statement_pdf.get_job(job_id)
+    if job is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Parse job not found (it may have expired or the server restarted). Upload again.",
+        )
+    if job.status == "done" and job.result and not job.matched:
+        job.matched = True  # before the await, so overlapping polls don't re-match
+        await svc.match_candidates(session, job.result.candidates)
+    return _to_job_schema(job)
 
 
 @import_router.post("/qif", response_model=ParseResultSchema)

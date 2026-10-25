@@ -1,5 +1,17 @@
 # BudgetScan Changelog
 
+## 2026-10-25
+
+- Add **statement upload** on the Transactions page (upload icon): pick an account, drop a CSV or QFX/OFX downloaded from the card issuer's website, review duplicates, apply. Replaces Quicken for cards Quicken can no longer connect to.
+- CSV import auto-detects issuer column layouts (single signed amount, separate debit/credit columns, or amount + debit/credit indicator) and infers which sign means "charge"; a **Flip signs** button corrects it when the guess is wrong.
+- QFX/OFX statements upload straight to the chosen account, with no Quicken account-ID mapping needed.
+- Add `POST /api/import/statement`; results go through the same duplicate matching and `/api/import/confirm` flow as Quicken sync, so re-uploading an overlapping statement skips transactions already imported.
+- **PDF statements** can be uploaded too (for issuers that only offer PDFs): each page is read by the local Ollama text model (vision model for scanned pages), and the result is checked against the statement's own balances (previous + charges − credits = new). The review screen shows whether it adds up before anything is applied. The PDF is never written to disk.
+- PDF page text is rebuilt into visual rows before it goes to the model, and the model returns both date columns with the posted date chosen in code. Without this, dates got shifted between neighbouring rows.
+- Add an optional `think` flag to `call_ollama_text`. Turning off Qwen3.5's thinking trace cuts one statement page from ~2 min to ~10 s with identical output.
+- QFX currency-mismatch errors now name the account instead of echoing the raw account number from the file.
+- Extract the import review table into a shared `ImportCandidateReview` component used by both Sync and statement upload.
+
 ## 2026-09-27
 
 - Redesign **manual transfer linking UX**: instead of asking for a raw transaction ID, the flow now starts with an account picker, then shows candidate counterpart transactions (matched by amount and sorted by date proximity) that can be linked with one click.
