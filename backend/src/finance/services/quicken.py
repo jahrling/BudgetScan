@@ -211,12 +211,20 @@ async def _account_map_by_quicken_id(session: AsyncSession) -> dict[str, Account
     return {a.quicken_id: a for a in result.scalars().all() if a.quicken_id}
 
 
-async def import_qfx(file_bytes: bytes, session: AsyncSession) -> ParseResult:
+async def import_qfx(
+    file_bytes: bytes,
+    session: AsyncSession,
+    *,
+    force_account: Account | None = None,
+) -> ParseResult:
     """Parse a QFX/OFX file into transaction candidates.
 
     Accounts are mapped via ``Account.quicken_id``. Unmapped account ids are
     listed in ``ParseResult.unmapped_accounts`` so the UI can prompt the user.
     Currency mismatches (CURDEF != account.currency) skip the whole statement.
+
+    ``force_account`` maps every statement in the file to that account instead
+    — used by statement upload, where the user picks the account explicitly.
     """
     result = ParseResult()
     text = file_bytes.decode("utf-8", errors="replace")
@@ -267,13 +275,14 @@ async def import_qfx(file_bytes: bytes, session: AsyncSession) -> ParseResult:
             current_curdef = inline.upper()
         elif tag == "ACCTID" and inline:
             current_acctid = inline
-            current_account = accounts.get(inline)
+            current_account = force_account or accounts.get(inline)
             if current_account is None:
                 if inline not in result.unmapped_accounts:
                     result.unmapped_accounts.append(inline)
             elif current_curdef and current_account.currency.upper() != current_curdef:
                 msg = (
-                    f"Currency mismatch for account {inline}: "
+                    # Name, not ACCTID — the raw id is a real account number.
+                    f"Currency mismatch for account {current_account.name}: "
                     f"file={current_curdef} account={current_account.currency}"
                 )
                 logger.warning(msg)

@@ -16,10 +16,12 @@ import {
   BookOpen,
   Sparkles,
   Trash2,
+  Upload,
   X,
 } from "lucide-react";
 import { Layout } from "../components/Layout";
 import { SnapReceiptButton } from "../components/SnapReceiptButton";
+import { StatementImportDialog } from "../components/StatementImportDialog";
 import { receiptImageUrl } from "../hooks/useReceipts";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -134,6 +136,7 @@ export default function Transactions() {
   const generateRulesMut = useGenerateRules();
 
   const [addOpen, setAddOpen] = useState(false);
+  const [statementOpen, setStatementOpen] = useState(false);
   const [addForm, setAddForm] = useState<AddForm>(emptyAdd);
   const [detectResult, setDetectResult] = useState<{ new_pairs: number; total_pairs: number } | null>(null);
   const [catReview, setCatReview] = useState<CategorizedTransaction[] | null>(null);
@@ -187,6 +190,19 @@ export default function Transactions() {
     setFilterExcluded("");
     setFilterRecurring("");
     setFilters({ date_from: new Date(from).toISOString() });
+    setPage(0);
+  }
+
+  // Show what was just imported: that account, back to the statement's first date.
+  function showImported(accountId: number, earliest: string) {
+    const from = earliest.slice(0, 10);
+    const next: Record<string, string> = { ...filters, account_id: String(accountId) };
+    if (!next.date_from || next.date_from > new Date(from).toISOString()) {
+      next.date_from = new Date(from).toISOString();
+      setDateFrom(from);
+    }
+    setFilterAccount(String(accountId));
+    setFilters(next);
     setPage(0);
   }
 
@@ -309,6 +325,14 @@ export default function Transactions() {
         <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Transactions</h1>
         <div className="flex flex-wrap gap-2">
           <SnapReceiptButton label="" variant="outline" />
+          <Button
+            variant="outline"
+            size="sm"
+            title="Import a credit card or bank statement (CSV, QFX, OFX)"
+            onClick={() => setStatementOpen(true)}
+          >
+            <Upload className="h-4 w-4" />
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -740,6 +764,12 @@ export default function Transactions() {
       </Dialog>
 
       {/* Add transaction dialog */}
+      <StatementImportDialog
+        open={statementOpen}
+        onClose={() => setStatementOpen(false)}
+        onImported={showImported}
+      />
+
       <Dialog open={addOpen} onClose={() => setAddOpen(false)}>
         <DialogTitle>
           {addForm.receipt_id ? "Add Transaction (manual fallback)" : "Add Transaction"}
