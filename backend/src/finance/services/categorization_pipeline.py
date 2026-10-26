@@ -11,6 +11,8 @@ Orchestrates the full identity + category cascade from DESIGN_LLM_CATEGORIZATION
     Tier 0: exact normalized match against MemorizedRule table
     Tier 1: substring / token overlap match
     Tier 2: embedding similarity against rules vector index
+    History: most common category among past transactions with the same
+             cleaned description (always flagged for review)
     Tier 3: LLM categorization with few-shot retrieved rules
 
 Each step is gated by the previous one failing. The pipeline returns a
@@ -26,6 +28,7 @@ from dataclasses import dataclass
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from finance.services.embeddings import Embedder
+from finance.services.history_matcher import HistoryIndex
 from finance.services.merchant_resolver import (
     MerchantIdentity,
     clean_description,
@@ -47,8 +50,8 @@ class PipelineResult:
     category_id: int | None
     category_path: str | None
     confidence: float
-    source: str  # "memorized_rule" | "llm" | "merchant_default" | "uncategorized"
-    tier: str  # "exact" | "substring" | "embedding" | "llm" | "merchant_default" | "none"
+    source: str  # "memorized_rule" | "history" | "llm" | "merchant_default" | "uncategorized"
+    tier: str  # "exact" | "substring" | "embedding" | "history" | "llm" | "merchant_default" | "none"
     needs_review: bool
     merchant_guess: str | None = None
     resolved_merchant: MerchantIdentity | None = None
@@ -61,11 +64,14 @@ async def categorize(
     amount_cents: int,
     *,
     embedder: Embedder | None = None,
+    history: HistoryIndex | None = None,
     skip_llm: bool = False,
 ) -> PipelineResult:
     """Run the full identity + categorization cascade for a single transaction.
 
     Pass ``embedder`` to enable Tier 2 (embedding similarity).
+    Pass ``history`` (from ``build_history_index``) to suggest categories
+    from past transactions when no rule matches.
     Pass ``skip_llm=True`` to stop after deterministic tiers (useful for
     bulk imports where LLM calls should be deferred).
     """
@@ -127,6 +133,21 @@ async def categorize(
                 needs_review=True,
                 resolved_merchant=identity,
                 similar_rules=rule_match.similar_rules,
+            )
+
+    # ── History: how the user categorized this description before ───────
+    if history is not None:
+        past = history.match(raw_description)
+        if past is not None:
+            return PipelineResult(
+                category_id=past.category_id,
+                category_path=None,
+                confidence=past.confidence,
+                source="history",
+                tier="history",
+                needs_review=True,
+                resolved_merchant=identity,
+                similar_rules=rule_match.similar_rules if rule_match else None,
             )
 
     # ── Tier 3: LLM categorization ──────────────────────────────────────

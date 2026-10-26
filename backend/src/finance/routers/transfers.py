@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from finance.auth.dependencies import current_user
@@ -84,7 +85,6 @@ async def list_pairs(
 
     acct_map: dict[int, str] = {}
     if account_ids:
-        from sqlalchemy import select
         rows = (
             await session.execute(
                 select(Account).where(Account.id.in_(account_ids))
@@ -220,8 +220,6 @@ async def get_pair(
     session: AsyncSession = Depends(get_session),
 ):
     from finance.models.account import Account
-    from sqlalchemy import select
-
     from finance.models.transaction import Transaction
 
     txn_q = (

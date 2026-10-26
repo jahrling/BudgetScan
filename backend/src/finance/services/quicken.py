@@ -750,6 +750,47 @@ def _build_category_paths(cats: list[Category]) -> dict[str, Category]:
     return {path_of(c): c for c in cats}
 
 
+def _match_category_path(path: str, paths: dict[str, Category]) -> Category | None:
+    """Full-path match, else the one top-level category named after the leaf.
+
+    The leaf fallback only considers top-level categories so a flat local tree
+    still links, but "Business:Meals" never lands on a nested "Food:Meals".
+    """
+    if path in paths:
+        return paths[path]
+    leaf = path.rsplit(":", 1)[-1]
+    hits = [cat for cat in paths.values() if cat.parent_id is None and cat.name == leaf]
+    return hits[0] if len(hits) == 1 else None
+
+
+async def relink_rule_categories(session: AsyncSession) -> int:
+    """Fill ``category_id`` on rules whose ``category_path`` now resolves.
+
+    QIF rules store Quicken's full path ("Food:Groceries"); when the local
+    category tree is flat or renamed, the exact lookup at import time fails
+    and the rule is left without a category, which makes it useless for
+    categorization. Returns the number of rules relinked (not committed).
+    """
+    rules = (
+        await session.execute(
+            select(MemorizedRuleModel)
+            .where(MemorizedRuleModel.category_id.is_(None))
+            .where(MemorizedRuleModel.category_path != "")
+        )
+    ).scalars().all()
+    if not rules:
+        return 0
+
+    paths = _build_category_paths(await _all_categories(session))
+    relinked = 0
+    for rule in rules:
+        cat = _match_category_path(rule.category_path, paths)
+        if cat is not None:
+            rule.category_id = cat.id
+            relinked += 1
+    return relinked
+
+
 async def resolve_category_path(
     session: AsyncSession,
     path: str,
@@ -1119,8 +1160,9 @@ async def persist_memorized_rules(
         seen_payees.add(norm)
 
         category_id = None
-        if parsed.category_path and parsed.category_path in cat_paths:
-            category_id = cat_paths[parsed.category_path].id
+        if parsed.category_path:
+            matched = _match_category_path(parsed.category_path, cat_paths)
+            category_id = matched.id if matched else None
 
         existing_for_payee = by_norm.get(norm, [])
         user_rules = [r for r in existing_for_payee if r.source == "user_created"]

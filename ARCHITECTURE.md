@@ -75,7 +75,8 @@ backend/src/finance/
   routes/              — API routers per domain
   services/
     transaction.py     — CRUD, replace_line_items (validates sum, manages status transitions)
-    categorization_pipeline.py — cascading: regex → merchant lookup → exact rule → substring → embedding → LLM
+    categorization_pipeline.py — cascading: regex → merchant lookup → exact rule → substring → embedding → history → LLM
+    history_matcher.py — past categorized txns indexed by cleaned description → most common category (review-only)
     receipt.py         — upload (dedupe by sha256), OCR via Ollama vision, materialize to txn
     budget.py          — status computation (spent via LineItem join), seed, income/unbudgeted/comparison
     transfer_detector.py — same amount ±3 days, different accounts
@@ -167,7 +168,9 @@ Transactions page → "Categorize" button
   → useCategorizeTransactions → POST /transactions/categorize
       → categorization_pipeline.py (cascading):
           Identity: regex cleanup → Merchant table → LLM merchant-name guess
-          Category: exact rule → substring/token → embedding similarity → LLM
+          Category: exact rule → substring/token → embedding similarity
+                    → history (past txns, same cleaned description, needs_review) → LLM
+            (rules with NULL category_id are skipped; relink_rule_categories() fills them at startup)
           → confidence ≥ 0.92 auto-confirms (needs_review=false)
       → returns {results[], processed, skipped}
   → CategorizationReviewModal (Transactions.tsx:~744)

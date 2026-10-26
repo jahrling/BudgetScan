@@ -4,7 +4,7 @@ from collections.abc import AsyncIterator
 from fastapi import FastAPI
 
 from finance.config import require_production_secrets
-from finance.db import init_db
+from finance.db import async_session_factory, init_db
 from finance.logging_setup import configure_json_logging
 from finance.routers.accounts import router as accounts_router
 from finance.routers.admin import router as admin_router
@@ -24,6 +24,7 @@ from finance.routers.investments import router as investments_router
 from finance.routers.transactions import router as transactions_router
 from finance.routers.transfers import router as transfers_router
 from finance.security import CSRFMiddleware, RateLimitMiddleware
+from finance.services.quicken import relink_rule_categories
 
 
 @asynccontextmanager
@@ -31,6 +32,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     configure_json_logging()
     require_production_secrets()
     await init_db()
+    async with async_session_factory() as session:
+        if await relink_rule_categories(session):
+            await session.commit()
     yield
 
 

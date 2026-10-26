@@ -2,6 +2,10 @@
 
 ## 2026-10-25
 
+- Fix **Find counterpart** on transfers: the candidate search endpoint crashed on every call (missing import), so the picker always said "no matching transactions"; and on a transaction already marked as a transfer the button opened nothing.
+- Linking a counterpart now clears the "transfer, no counterpart yet" marker on both sides.
+- Fix **auto-categorization** returning almost nothing: most Quicken memorized rules had no category attached (their full Quicken paths didn't match the local category names), and those empty rules still won the match and stopped the cascade before the LLM ran. Rules without a category are now ignored, and rule categories are relinked by full path or unique leaf name at startup and on QIF import.
+- Add a **past-transactions tier** to categorization: when no rule matches, suggest the category most often used before for the same cleaned description. Always shown for review, never auto-applied; confirming it creates a rule.
 - Add **statement upload** on the Transactions page (upload icon): pick an account, drop a CSV or QFX/OFX downloaded from the card issuer's website, review duplicates, apply. Replaces Quicken for cards Quicken can no longer connect to.
 - CSV import auto-detects issuer column layouts (single signed amount, separate debit/credit columns, or amount + debit/credit indicator) and infers which sign means "charge"; a **Flip signs** button corrects it when the guess is wrong.
 - QFX/OFX statements upload straight to the chosen account, with no Quicken account-ID mapping needed.

@@ -22,6 +22,7 @@ from finance.schemas.transaction import (
 from finance.services import transaction as txn_service
 from finance.services.categorization_pipeline import categorize
 from finance.services.embeddings import default_embedder
+from finance.services.history_matcher import build_history_index
 from finance.services.merchant_resolver import (
     clean_description,
     normalize_for_matching,
@@ -268,6 +269,7 @@ async def categorize_transactions(
     ``/apply-categories`` endpoint to apply the ones the user confirms.
     """
     embedder = default_embedder()
+    history = await build_history_index(session)
 
     uncat_q = select(Category.id).where(Category.name == "Uncategorized")
     uncat_ids = [r for r in (await session.execute(uncat_q)).scalars().all()]
@@ -306,6 +308,7 @@ async def categorize_transactions(
             txn.description,
             txn.amount_cents,
             embedder=embedder,
+            history=history,
             skip_llm=body.skip_llm,
         )
 
@@ -602,6 +605,7 @@ async def bootstrap_categories(
     from collections import Counter
 
     embedder = default_embedder()
+    history = await build_history_index(session)
 
     uncat_q = select(Category.id).where(Category.name == "Uncategorized")
     uncat_ids = list((await session.execute(uncat_q)).scalars().all())
@@ -634,6 +638,7 @@ async def bootstrap_categories(
             txn.description,
             txn.amount_cents,
             embedder=embedder,
+            history=history,
             skip_llm=True,
         )
 

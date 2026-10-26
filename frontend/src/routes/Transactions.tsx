@@ -880,6 +880,7 @@ const TIER_LABELS: Record<string, string> = {
   exact: "Exact match",
   substring: "Substring",
   embedding: "Embedding",
+  history: "Past transactions",
   llm: "LLM",
   merchant_default: "Merchant default",
   none: "None",
@@ -1030,6 +1031,8 @@ function CategorizationReviewModal({
                                 ? "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300"
                                 : r.tier === "embedding"
                                   ? "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300"
+                                  : r.tier === "history"
+                                    ? "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300"
                                   : r.tier === "llm"
                                     ? "bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300"
                                     : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400",
@@ -1467,7 +1470,7 @@ function TransactionDetailView({
             </Button>
           </div>
         </div>
-      ) : !txn.transfer_pair_id && txn.transfer_target_account_name ? (
+      ) : !txn.transfer_pair_id && txn.transfer_target_account_name && !showLinkDialog ? (
         <div className="rounded-lg border border-violet-200 dark:border-violet-800 bg-violet-50 dark:bg-violet-900/30 p-2.5 mb-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <ArrowLeftRight className="h-4 w-4 text-violet-600 dark:text-violet-400 flex-shrink-0" />
@@ -1576,6 +1579,7 @@ function TransactionDetailView({
                     </p>
                   )}
 
+                  {txn.transfer_target_account_id == null && (
                   <div className="pt-2 border-t border-violet-200 dark:border-violet-700 mt-2">
                     <Button
                       size="sm"
@@ -1595,6 +1599,7 @@ function TransactionDetailView({
                         : `Mark as transfer (no counterpart yet)`}
                     </Button>
                   </div>
+                  )}
 
                   {(linkMut.isError || markMut.isError) && (
                     <p className="text-xs text-red-600 mt-1">
