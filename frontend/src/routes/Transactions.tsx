@@ -10,6 +10,7 @@ import {
   ChevronRight,
   EyeOff,
   Eye,
+  Filter,
   Plus,
   Repeat,
   Search,
@@ -114,6 +115,7 @@ export default function Transactions() {
   const [filterCategory, setFilterCategory] = useState("");
   const [filterExcluded, setFilterExcluded] = useState("");
   const [filterRecurring, setFilterRecurring] = useState("");
+  const [searchText, setSearchText] = useState("");
   const [page, setPage] = useState(0);
   const [sorts, setSorts] = useState<SortSpec[]>([{ field: "posted_at", dir: "desc" }]);
   const pageSize = 50;
@@ -175,6 +177,7 @@ export default function Transactions() {
     if (filterCategory) f.category_id = filterCategory;
     if (filterExcluded) f.excluded = filterExcluded;
     if (filterRecurring) f.is_recurring = filterRecurring;
+    if (filters.q) f.q = filters.q;
     setFilters(f);
     setPage(0);
     setSearchOpen(false);
@@ -203,6 +206,20 @@ export default function Transactions() {
     }
     setFilterAccount(String(accountId));
     setFilters(next);
+    setPage(0);
+  }
+
+  function applySearch() {
+    const text = searchText.trim();
+    if (!text) return;
+    const next = { ...filters, q: text };
+    // Search all history unless the user picked a date range themselves.
+    if (next.date_from === new Date(defaultDateFrom).toISOString() && !next.date_to) {
+      delete next.date_from;
+      setDateFrom("");
+    }
+    setFilters(next);
+    setSearchText("");
     setPage(0);
   }
 
@@ -312,6 +329,7 @@ export default function Transactions() {
       return c ? c.name : `Category #${value}`;
     }
     if (key === "status") return value;
+    if (key === "q") return `"${value}"`;
     if (key === "excluded") return value === "only" ? "Excluded only" : value === "hide" ? "Hiding excluded" : "Including excluded";
     if (key === "is_recurring") return value === "true" ? "Recurring only" : "Non-recurring only";
     if (key === "date_from") return `From ${new Date(value).toLocaleDateString()}`;
@@ -373,9 +391,10 @@ export default function Transactions() {
             variant="outline"
             size="sm"
             onClick={() => setSearchOpen(true)}
+            title="Filter transactions"
             className={hasFilters ? "border-sky-500 text-sky-600" : ""}
           >
-            <Search className="h-4 w-4" />
+            <Filter className="h-4 w-4" />
           </Button>
           <Button size="sm" onClick={openAdd}>
             <Plus className="h-4 w-4 mr-1" />
@@ -447,6 +466,35 @@ export default function Transactions() {
         />
       )}
 
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+        <div className="text-xs text-gray-500 dark:text-gray-400">
+          {!isLoading && items.length > 0 && `${total.toLocaleString()} transactions`}
+        </div>
+        <form
+          role="search"
+          className="relative w-full sm:w-64"
+          onSubmit={(e) => {
+            e.preventDefault();
+            applySearch();
+          }}
+        >
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
+          <Input
+            type="search"
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setSearchText("");
+            }}
+            placeholder="Search transactions…"
+            aria-label="Search transactions"
+            enterKeyHint="search"
+            maxLength={200}
+            className="h-9 pl-8"
+          />
+        </form>
+      </div>
+
       {isLoading ? (
         <p className="text-gray-500 dark:text-gray-400 text-sm">Loading…</p>
       ) : items.length === 0 ? (
@@ -455,10 +503,6 @@ export default function Transactions() {
         </p>
       ) : (
         <>
-          <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-            {total.toLocaleString()} transactions
-          </div>
-
           {/* Table */}
           <div className="overflow-x-auto min-w-0 rounded-lg border border-gray-200 dark:border-gray-700">
             <table className="w-full text-sm min-w-[600px]">

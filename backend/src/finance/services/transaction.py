@@ -1,13 +1,14 @@
 from datetime import datetime
 
 from fastapi import HTTPException
-from sqlalchemy import delete as sa_delete, func, select
+from sqlalchemy import delete as sa_delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from finance.models.account import Account
 from finance.models.category import Category
 from finance.models.line_item import LineItem
+from finance.models.merchant import Merchant
 from finance.models.transaction import Transaction
 from finance.schemas.line_item import LineItemCreate
 from finance.schemas.transaction import TransactionCreate, TransactionUpdate
@@ -37,6 +38,7 @@ async def list_transactions(
     category_ids: list[int] | None = None,
     excluded: str | None = None,
     is_recurring: bool | None = None,
+    search: str | None = None,
     sort_specs: list[tuple[str, str]] | None = None,
 ) -> tuple[list[Transaction], int]:
     q = select(Transaction)
@@ -80,6 +82,23 @@ async def list_transactions(
         pass
     else:
         q = q.where(Transaction.excluded.is_(None))
+
+    if search and search.strip():
+        # Case-insensitive substring over description, merchant and line items.
+        # (SQLite's lower() only folds ASCII, so accented letters match case-sensitively.)
+        escaped = search.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        pattern = f"%{escaped}%"
+        merchant_ids = select(Merchant.id).where(Merchant.name.ilike(pattern, escape="\\"))
+        line_item_txns = select(LineItem.transaction_id).where(
+            LineItem.description.ilike(pattern, escape="\\")
+        )
+        q = q.where(
+            or_(
+                Transaction.description.ilike(pattern, escape="\\"),
+                Transaction.merchant_id.in_(merchant_ids),
+                Transaction.id.in_(line_item_txns),
+            )
+        )
 
     if is_recurring is True:
         q = q.where(Transaction.is_recurring.is_(True))

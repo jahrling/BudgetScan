@@ -100,7 +100,7 @@ frontend/src/
   hooks/               — TanStack Query wrappers per domain (one file per entity)
   routes/
     Home.tsx           — dashboard: budget cards, recent txns, top merchants
-    Transactions.tsx   — list + filters + TransactionDetailView (inline, ~line 1099) + CategorizationReviewModal (~line 744)
+    Transactions.tsx   — list + filters + text search chip + TransactionDetailView (inline, ~line 1099) + CategorizationReviewModal (~line 744)
     Budgets.tsx        — plan (slider adjust) + track (progress bars) views, MonthSelector
     Categories.tsx     — hierarchical CRUD tree
     ReceiptProcessing.tsx — OCR polling → redirect to review
@@ -321,7 +321,7 @@ Policy-gated sending (Tier 2, all gated):
 |---|---|
 | `/api/accounts` | CRUD, `POST /merge` |
 | `/api/categories` | CRUD (flat list, tree built client-side from parent_id) |
-| `/api/transactions` | CRUD, `PUT /:id/line_items`, `POST /categorize`, `POST /apply-categories`, `POST /:id/confirm-category` |
+| `/api/transactions` | CRUD (`GET ?q=` text search over description/merchant/line items), `PUT /:id/line_items`, `POST /categorize`, `POST /apply-categories`, `POST /:id/confirm-category` |
 | `/api/budgets` | CRUD, `GET /status`, `GET /suggestions`, `GET /income-summary`, `GET /unbudgeted-spend`, `GET /comparison`, `POST /seed` |
 | `/api/merchants` | CRUD, `GET /search?q=` |
 | `/api/receipts` | `POST /` upload, `GET /:id/image`, `POST /:id/process`, `GET /:id/ocr-preview`, `POST /:id/to-transaction`, `POST /:id/review-to-transaction` |

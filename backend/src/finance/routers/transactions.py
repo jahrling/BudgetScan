@@ -46,6 +46,7 @@ async def list_transactions(
     category_ids: str | None = Query(None, description="Comma-separated category IDs (overrides category_id)"),
     excluded: str | None = Query(None, description="'only' = excluded only, 'include' = all, omit/null = hide excluded"),
     is_recurring: bool | None = Query(None, description="Filter by recurring flag"),
+    q: str | None = Query(None, max_length=200, description="Text search over description, merchant and line items"),
     sort_by: str | None = None,
     sort_dir: str = "desc",
     sort: str | None = Query(None, description="Multi-sort: 'col1:asc,col2:desc'"),
@@ -75,6 +76,7 @@ async def list_transactions(
         category_ids=[int(x) for x in category_ids.split(",") if x.strip()] if category_ids else None,
         excluded=excluded,
         is_recurring=is_recurring,
+        search=q,
         sort_specs=sort_specs,
     )
 
