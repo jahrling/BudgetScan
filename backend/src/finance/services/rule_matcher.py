@@ -115,6 +115,7 @@ async def _tier0_exact(
         select(MemorizedRule)
         .where(MemorizedRule.normalized_payee == normalized)
         .where(MemorizedRule.status == "active")
+        .where(MemorizedRule.category_id.isnot(None))
     )
     rows = (await session.execute(stmt)).scalars().all()
 
@@ -137,7 +138,11 @@ async def _tier1_substring(
     normalized: str,
 ) -> RuleMatch | None:
     """Tier 1: substring containment or dominant-token overlap."""
-    stmt = select(MemorizedRule).where(MemorizedRule.status == "active")
+    stmt = (
+        select(MemorizedRule)
+        .where(MemorizedRule.status == "active")
+        .where(MemorizedRule.category_id.isnot(None))
+    )
     rows = (await session.execute(stmt)).scalars().all()
 
     if not rows:
@@ -244,6 +249,7 @@ async def _tier2_embedding(
         select(MemorizedRule)
         .where(MemorizedRule.id.in_(hit_rule_ids))
         .where(MemorizedRule.status == "active")
+        .where(MemorizedRule.category_id.isnot(None))
     )
     rules_by_id = {
         r.id: r for r in (await session.execute(stmt)).scalars().all()

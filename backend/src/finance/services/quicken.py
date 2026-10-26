@@ -211,12 +211,20 @@ async def _account_map_by_quicken_id(session: AsyncSession) -> dict[str, Account
     return {a.quicken_id: a for a in result.scalars().all() if a.quicken_id}
 
 
-async def import_qfx(file_bytes: bytes, session: AsyncSession) -> ParseResult:
+async def import_qfx(
+    file_bytes: bytes,
+    session: AsyncSession,
+    *,
+    force_account: Account | None = None,
+) -> ParseResult:
     """Parse a QFX/OFX file into transaction candidates.
 
     Accounts are mapped via ``Account.quicken_id``. Unmapped account ids are
     listed in ``ParseResult.unmapped_accounts`` so the UI can prompt the user.
     Currency mismatches (CURDEF != account.currency) skip the whole statement.
+
+    ``force_account`` maps every statement in the file to that account instead
+    — used by statement upload, where the user picks the account explicitly.
     """
     result = ParseResult()
     text = file_bytes.decode("utf-8", errors="replace")
@@ -267,13 +275,14 @@ async def import_qfx(file_bytes: bytes, session: AsyncSession) -> ParseResult:
             current_curdef = inline.upper()
         elif tag == "ACCTID" and inline:
             current_acctid = inline
-            current_account = accounts.get(inline)
+            current_account = force_account or accounts.get(inline)
             if current_account is None:
                 if inline not in result.unmapped_accounts:
                     result.unmapped_accounts.append(inline)
             elif current_curdef and current_account.currency.upper() != current_curdef:
                 msg = (
-                    f"Currency mismatch for account {inline}: "
+                    # Name, not ACCTID — the raw id is a real account number.
+                    f"Currency mismatch for account {current_account.name}: "
                     f"file={current_curdef} account={current_account.currency}"
                 )
                 logger.warning(msg)
@@ -741,6 +750,47 @@ def _build_category_paths(cats: list[Category]) -> dict[str, Category]:
     return {path_of(c): c for c in cats}
 
 
+def _match_category_path(path: str, paths: dict[str, Category]) -> Category | None:
+    """Full-path match, else the one top-level category named after the leaf.
+
+    The leaf fallback only considers top-level categories so a flat local tree
+    still links, but "Business:Meals" never lands on a nested "Food:Meals".
+    """
+    if path in paths:
+        return paths[path]
+    leaf = path.rsplit(":", 1)[-1]
+    hits = [cat for cat in paths.values() if cat.parent_id is None and cat.name == leaf]
+    return hits[0] if len(hits) == 1 else None
+
+
+async def relink_rule_categories(session: AsyncSession) -> int:
+    """Fill ``category_id`` on rules whose ``category_path`` now resolves.
+
+    QIF rules store Quicken's full path ("Food:Groceries"); when the local
+    category tree is flat or renamed, the exact lookup at import time fails
+    and the rule is left without a category, which makes it useless for
+    categorization. Returns the number of rules relinked (not committed).
+    """
+    rules = (
+        await session.execute(
+            select(MemorizedRuleModel)
+            .where(MemorizedRuleModel.category_id.is_(None))
+            .where(MemorizedRuleModel.category_path != "")
+        )
+    ).scalars().all()
+    if not rules:
+        return 0
+
+    paths = _build_category_paths(await _all_categories(session))
+    relinked = 0
+    for rule in rules:
+        cat = _match_category_path(rule.category_path, paths)
+        if cat is not None:
+            rule.category_id = cat.id
+            relinked += 1
+    return relinked
+
+
 async def resolve_category_path(
     session: AsyncSession,
     path: str,
@@ -1110,8 +1160,9 @@ async def persist_memorized_rules(
         seen_payees.add(norm)
 
         category_id = None
-        if parsed.category_path and parsed.category_path in cat_paths:
-            category_id = cat_paths[parsed.category_path].id
+        if parsed.category_path:
+            matched = _match_category_path(parsed.category_path, cat_paths)
+            category_id = matched.id if matched else None
 
         existing_for_payee = by_norm.get(norm, [])
         user_rules = [r for r in existing_for_payee if r.source == "user_created"]

@@ -75,11 +75,14 @@ backend/src/finance/
   routes/              — API routers per domain
   services/
     transaction.py     — CRUD, replace_line_items (validates sum, manages status transitions)
-    categorization_pipeline.py — cascading: regex → merchant lookup → exact rule → substring → embedding → LLM
+    categorization_pipeline.py — cascading: regex → merchant lookup → exact rule → substring → embedding → history → LLM
+    history_matcher.py — past categorized txns indexed by cleaned description → most common category (review-only)
     receipt.py         — upload (dedupe by sha256), OCR via Ollama vision, materialize to txn
     budget.py          — status computation (spent via LineItem join), seed, income/unbudgeted/comparison
     transfer_detector.py — same amount ±3 days, different accounts
     quicken.py         — QIF/QFX parse, candidate matching, import confirm
+    statement_import.py — card/bank statement upload: CSV column detection + sign inference, QFX forced to a chosen account
+    statement_pdf.py   — PDF card statements: in-memory parse jobs, per-page LLM extraction, balance reconciliation
     finance_qa.py      — RAG: numeric → SQL, free-text → vector retrieval + generation
     market_data.py     — fetch S&P 500 prices (Stooq) and T-bill risk-free rate (FRED)
     email/
@@ -114,6 +117,8 @@ frontend/src/
     MonthSelector.tsx  — ‹ Month Year › navigation
     SnapReceiptButton.tsx — camera/file upload → receipt processing
     GlobalDropZone.tsx — drag-and-drop: .qif → sync, images → receipt upload
+    ImportCandidateReview.tsx — shared import review table (new/duplicate/merge per row + Apply bar)
+    StatementImportDialog.tsx — account picker + CSV/QFX upload → ImportCandidateReview
     ui/                — Button, Dialog, Input, Label, Select, SegmentedControl
 ```
 
@@ -163,7 +168,9 @@ Transactions page → "Categorize" button
   → useCategorizeTransactions → POST /transactions/categorize
       → categorization_pipeline.py (cascading):
           Identity: regex cleanup → Merchant table → LLM merchant-name guess
-          Category: exact rule → substring/token → embedding similarity → LLM
+          Category: exact rule → substring/token → embedding similarity
+                    → history (past txns, same cleaned description, needs_review) → LLM
+            (rules with NULL category_id are skipped; relink_rule_categories() fills them at startup)
           → confidence ≥ 0.92 auto-confirms (needs_review=false)
       → returns {results[], processed, skipped}
   → CategorizationReviewModal (Transactions.tsx:~744)
@@ -199,6 +206,30 @@ Import:
 
 Export:
   → account checkboxes + date range → GET /api/export/qif (downloads file)
+```
+
+### Statement Upload (credit card / bank CSV or QFX)
+```
+Transactions page → upload icon → StatementImportDialog
+  → pick account + file → POST /api/import/statement (file, account_id, invert?)
+      → statement_import.parse_statement(): PDF → 415; <OFX → import_qfx(force_account=)
+        CSV → find header row → pick date (posted first) / description / amount or debit+credit columns
+            → single amount column: invert=None infers from majority sign (charges negative)
+      → match_candidates() (same dedup as Quicken sync)
+      → StatementParseResult {candidates[], errors[], format, inverted, columns}
+  → "Flip signs" re-posts with invert=!inverted
+  → ImportCandidateReview (inDialog) → POST /api/import/confirm
+  → on success: list filters to that account, date_from widened to statement start
+
+PDF (credit card statements):
+  → POST /api/import/statement-pdf (file, account_id) → 202 {job_id}  (in-memory job, PDF never stored)
+      → per page: words regrouped into visual rows → skip pages without date+amount
+        → Ollama text model (think=false) → {summary, transactions[{trans_date, post_date, amount, kind}]}
+        → no text layer → vision model on rendered page
+      → build_result(): MM/DD → year via closing date, posted date preferred, kind → sign
+        → Reconciliation: previous + charges − credits − new (0 = adds up)
+  → UI polls GET /api/import/statement-pdf/{job_id} (match_candidates runs once when done)
+  → ReconciliationBanner (green/amber) above ImportCandidateReview → same /confirm
 ```
 
 ### Transfer Detection
@@ -300,7 +331,7 @@ Policy-gated sending (Tier 2, all gated):
 | `/api/rules` | CRUD, `POST /preview`, `POST /reindex` |
 | `/api/transfers` | `POST /detect`, `GET /`, `GET /:pair_id`, `POST /link`, `DELETE /:pair_id` |
 | `/api/ask` | `POST /` (RAG), `POST /reindex` |
-| `/api/import` | `POST /qif`, `POST /qfx`, `POST /confirm` |
+| `/api/import` | `POST /qif`, `POST /qfx`, `POST /statement`, `POST /statement-pdf`, `GET /statement-pdf/:job_id`, `POST /confirm` |
 | `/api/export` | `GET /qif` |
 | `/api/auth` | `GET /needs-setup`, `POST /setup`, `POST /login`, `POST /logout`, `GET /me` |
 | `/api/investments` | `GET /overview`, `GET /holdings`, `GET /performance`, `POST /import-qif`, `POST /import/holdings-csv`, `POST /benchmark/refresh`, `POST /risk-free-rate/refresh`, `GET /accounts`, lot rebuild, analytics |

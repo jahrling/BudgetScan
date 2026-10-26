@@ -197,6 +197,9 @@ async def link_transfer_pair(
     pair_id = min(txn_a.id, txn_b.id)
     txn_a.transfer_pair_id = pair_id
     txn_b.transfer_pair_id = pair_id
+    # A linked pair supersedes any "transfer, no counterpart yet" marker.
+    txn_a.transfer_target_account_id = None
+    txn_b.transfer_target_account_id = None
 
     transfer_cat = await _get_or_create_transfer_category(session)
     await _assign_transfer_category(session, txn_a, transfer_cat.id)

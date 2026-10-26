@@ -16,10 +16,12 @@ import {
   BookOpen,
   Sparkles,
   Trash2,
+  Upload,
   X,
 } from "lucide-react";
 import { Layout } from "../components/Layout";
 import { SnapReceiptButton } from "../components/SnapReceiptButton";
+import { StatementImportDialog } from "../components/StatementImportDialog";
 import { receiptImageUrl } from "../hooks/useReceipts";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -134,6 +136,7 @@ export default function Transactions() {
   const generateRulesMut = useGenerateRules();
 
   const [addOpen, setAddOpen] = useState(false);
+  const [statementOpen, setStatementOpen] = useState(false);
   const [addForm, setAddForm] = useState<AddForm>(emptyAdd);
   const [detectResult, setDetectResult] = useState<{ new_pairs: number; total_pairs: number } | null>(null);
   const [catReview, setCatReview] = useState<CategorizedTransaction[] | null>(null);
@@ -187,6 +190,19 @@ export default function Transactions() {
     setFilterExcluded("");
     setFilterRecurring("");
     setFilters({ date_from: new Date(from).toISOString() });
+    setPage(0);
+  }
+
+  // Show what was just imported: that account, back to the statement's first date.
+  function showImported(accountId: number, earliest: string) {
+    const from = earliest.slice(0, 10);
+    const next: Record<string, string> = { ...filters, account_id: String(accountId) };
+    if (!next.date_from || next.date_from > new Date(from).toISOString()) {
+      next.date_from = new Date(from).toISOString();
+      setDateFrom(from);
+    }
+    setFilterAccount(String(accountId));
+    setFilters(next);
     setPage(0);
   }
 
@@ -309,6 +325,14 @@ export default function Transactions() {
         <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Transactions</h1>
         <div className="flex flex-wrap gap-2">
           <SnapReceiptButton label="" variant="outline" />
+          <Button
+            variant="outline"
+            size="sm"
+            title="Import a credit card or bank statement (CSV, QFX, OFX)"
+            onClick={() => setStatementOpen(true)}
+          >
+            <Upload className="h-4 w-4" />
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -740,6 +764,12 @@ export default function Transactions() {
       </Dialog>
 
       {/* Add transaction dialog */}
+      <StatementImportDialog
+        open={statementOpen}
+        onClose={() => setStatementOpen(false)}
+        onImported={showImported}
+      />
+
       <Dialog open={addOpen} onClose={() => setAddOpen(false)}>
         <DialogTitle>
           {addForm.receipt_id ? "Add Transaction (manual fallback)" : "Add Transaction"}
@@ -850,6 +880,7 @@ const TIER_LABELS: Record<string, string> = {
   exact: "Exact match",
   substring: "Substring",
   embedding: "Embedding",
+  history: "Past transactions",
   llm: "LLM",
   merchant_default: "Merchant default",
   none: "None",
@@ -1000,6 +1031,8 @@ function CategorizationReviewModal({
                                 ? "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300"
                                 : r.tier === "embedding"
                                   ? "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300"
+                                  : r.tier === "history"
+                                    ? "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300"
                                   : r.tier === "llm"
                                     ? "bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300"
                                     : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400",
@@ -1437,7 +1470,7 @@ function TransactionDetailView({
             </Button>
           </div>
         </div>
-      ) : !txn.transfer_pair_id && txn.transfer_target_account_name ? (
+      ) : !txn.transfer_pair_id && txn.transfer_target_account_name && !showLinkDialog ? (
         <div className="rounded-lg border border-violet-200 dark:border-violet-800 bg-violet-50 dark:bg-violet-900/30 p-2.5 mb-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <ArrowLeftRight className="h-4 w-4 text-violet-600 dark:text-violet-400 flex-shrink-0" />
@@ -1546,6 +1579,7 @@ function TransactionDetailView({
                     </p>
                   )}
 
+                  {txn.transfer_target_account_id == null && (
                   <div className="pt-2 border-t border-violet-200 dark:border-violet-700 mt-2">
                     <Button
                       size="sm"
@@ -1565,6 +1599,7 @@ function TransactionDetailView({
                         : `Mark as transfer (no counterpart yet)`}
                     </Button>
                   </div>
+                  )}
 
                   {(linkMut.isError || markMut.isError) && (
                     <p className="text-xs text-red-600 mt-1">

@@ -168,8 +168,14 @@ async def call_ollama_text(
     prompt: str,
     *,
     model: str | None = None,
+    think: bool | None = None,
 ) -> str:
-    """Call Ollama with a text-only prompt. Returns the raw model response text."""
+    """Call Ollama with a text-only prompt. Returns the raw model response text.
+
+    ``think=False`` turns off a reasoning model's thinking trace. For plain
+    extraction it adds minutes per call (thousands of hidden tokens) without
+    improving the JSON. None leaves the model's default.
+    """
     model_name = model or settings.ollama_text_model
     url = f"{settings.ollama_url.rstrip('/')}/api/generate"
     payload: dict[str, Any] = {
@@ -178,6 +184,8 @@ async def call_ollama_text(
         "stream": False,
         "options": {"temperature": 0.1},
     }
+    if think is not None:
+        payload["think"] = think
     timeout = httpx.Timeout(settings.ollama_timeout_seconds, connect=30.0)
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
