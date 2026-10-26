@@ -2,6 +2,7 @@
 
 ## 2026-10-25
 
+- Add **text search** to Transactions: a search field above the table (right side) matches description, merchant name and line-item text; pressing Enter adds it as a removable chip alongside the other active filters and searches all history (the default 30-day window is dropped; a date range you set yourself is kept). The filter-dialog button now uses a filter icon so it isn't mistaken for search.
 - Add **statement upload** on the Transactions page (upload icon): pick an account, drop a CSV or QFX/OFX downloaded from the card issuer's website, review duplicates, apply. Replaces Quicken for cards Quicken can no longer connect to.
 - CSV import auto-detects issuer column layouts (single signed amount, separate debit/credit columns, or amount + debit/credit indicator) and infers which sign means "charge"; a **Flip signs** button corrects it when the guess is wrong.
 - QFX/OFX statements upload straight to the chosen account, with no Quicken account-ID mapping needed.
